@@ -1,0 +1,6 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- Debug builds only: every weather icon, day and night, for visual checks. -->
+        <activity android:name=".WeatherGalleryActivity" android:exported="true" />
+    </application>
+</manifest>

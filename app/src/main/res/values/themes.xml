@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="zen_bg">#FF0E1116</color>
+
+    <!-- Platform theme only (no AppCompat/Material dependency). The window background
+         doubles as the cold-start splash so there is no white flash. -->
+    <style name="Theme.Zen" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">@color/zen_bg</item>
+        <item name="android:colorBackground">@color/zen_bg</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@color/zen_bg</item>
+        <item name="android:windowShowWallpaper">false</item>
+        <item name="android:windowContentOverlay">@null</item>
+    </style>
+</resources>
