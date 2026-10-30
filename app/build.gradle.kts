@@ -1,6 +1,14 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+// Release key lives in signing/keystore.properties (git-ignored). Without it, release builds
+// fall back to the debug key so the project still builds on another machine.
+val releaseSigning = rootProject.file("signing/keystore.properties").takeIf { it.exists() }?.let { f ->
+    Properties().apply { f.inputStream().use(::load) }
 }
 
 android {
@@ -12,7 +20,18 @@ android {
         minSdk = 23          // Android 6.0+: covers most older smart TVs and boxes
         targetSdk = 36
         versionCode = 1
-        versionName = "1.0"
+        versionName = "1.0.0"
+    }
+
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = rootProject.file("signing").resolve(releaseSigning.getProperty("storeFile").substringAfterLast('/'))
+                storePassword = releaseSigning.getProperty("storePassword")
+                keyAlias = releaseSigning.getProperty("keyAlias")
+                keyPassword = releaseSigning.getProperty("keyPassword")
+            }
+        }
     }
 
     buildTypes {
@@ -20,9 +39,7 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            // Signed with the debug key so `assembleRelease` is sideloadable out of the box.
-            // Replace with your own signingConfig before distributing.
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.findByName("release") ?: signingConfigs.getByName("debug")
         }
     }
 
