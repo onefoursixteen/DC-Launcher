@@ -7,11 +7,9 @@ local.properties
 *.keystore
 *.jks
 
-# Screenshots of the real TVs (show IP addresses, PINs, watchlists): kept locally only.
 screenshots/
 .DS_Store
 
-# Release signing key and its password: never commit.
 signing/
 keystore.properties
 release/
