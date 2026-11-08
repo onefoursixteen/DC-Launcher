@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## v1.2.0 — 2026-11-08
 
 ### New
 - **TMDB watchlist sync** (Settings → Spotlight): connect your TMDB account by scanning a QR
@@ -16,6 +16,9 @@
 
 ### Cleaned up
 - Removed unused code, imports and leftover design mock-ups, and the debug-only weather preview screen.
+
+### Install
+Updates v1.0.0 or v1.1.0 in place and keeps your settings: install `dc-launcher-v1.2.0.apk` over it.
 
 ## v1.1.0 — 2026-11-08
 
