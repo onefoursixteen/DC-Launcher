@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.3.1 — 2026-11-08
+
+### Fixed
+- **Watch trailer** now plays the trailer straight away instead of only opening YouTube.
+
+### Install
+Updates any earlier version in place and keeps your settings: install `dc-launcher-v1.3.1.apk` over it.
+
 ## v1.3.0 — 2026-11-08
 
 ### New

@@ -209,11 +209,14 @@ class MainActivity : ComponentActivity() {
         return super.onKeyUp(keyCode, event)
     }
 
-    /** YouTube's TV app if it's there, otherwise whatever handles YouTube links (e.g. SmartTube). */
+    /**
+     * YouTube's TV app if it's there, otherwise whatever handles YouTube links (e.g. SmartTube).
+     * The TV app only starts playback for a full watch URL; "vnd.youtube:" just opens its home.
+     */
     private fun playTrailer(youtubeKey: String) {
-        val youtubeTv = Intent(Intent.ACTION_VIEW, "vnd.youtube:$youtubeKey".toUri())
-            .setPackage("com.google.android.youtube.tv")
-        val anyApp = Intent(Intent.ACTION_VIEW, "https://www.youtube.com/watch?v=$youtubeKey".toUri())
+        val url = "https://www.youtube.com/watch?v=$youtubeKey".toUri()
+        val youtubeTv = Intent(Intent.ACTION_VIEW, url).setPackage("com.google.android.youtube.tv")
+        val anyApp = Intent(Intent.ACTION_VIEW, url)
         for (intent in listOf(youtubeTv, anyApp)) {
             try {
                 startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
