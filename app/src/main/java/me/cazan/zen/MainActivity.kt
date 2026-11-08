@@ -137,6 +137,9 @@ class MainActivity : ComponentActivity() {
         started = true
         homeVisible = true
         app.network.start()
+        // Re-read the app list every time home appears. It's cheap, and it corrects a list
+        // that was read while Android was still settling after boot or that missed a broadcast.
+        lifecycleScope.launch { app.apps.refresh() }
     }
 
     override fun onStop() {

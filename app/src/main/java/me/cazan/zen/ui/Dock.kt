@@ -91,8 +91,11 @@ fun DockRow(
     firstRequester: FocusRequester,
     upTarget: FocusRequester?,
     modifier: Modifier = Modifier,
+    /** Bumped by the home screen when it wants the row back at its first app (start-up, Home). */
+    scrollReset: Int = 0,
 ) {
     val listState = rememberLazyListState()
+    LaunchedEffect(scrollReset) { if (apps.isNotEmpty()) listState.scrollToItem(0) }
     BoxWithConstraints(
         modifier
             .fillMaxWidth()

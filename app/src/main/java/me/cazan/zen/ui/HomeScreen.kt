@@ -214,11 +214,17 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
         pendingFocus = true
     }
     val gridCount = if (tabId == TAB_WATCH) config.watchlist.size else tabApps.size
+    var scrollReset by remember { mutableIntStateOf(0) }
     LaunchedEffect(pendingFocus, gridCount > 0) {
         if (!pendingFocus || gridCount == 0) return@LaunchedEffect
         windowTop = 0
-        withFrameNanos { }
-        runCatching { firstTile.requestFocus() }
+        scrollReset++
+        // Lazy rows lay out their items a frame or more after composition, so keep trying for
+        // a short while instead of giving up after one frame.
+        for (attempt in 0 until 30) {
+            withFrameNanos { }
+            if (runCatching { firstTile.requestFocus() }.getOrDefault(false)) break
+        }
         pendingFocus = false
     }
 
@@ -325,6 +331,7 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                     },
                     firstRequester = firstTile,
                     upTarget = selectedTabRequester,
+                    scrollReset = scrollReset,
                     modifier = Modifier
                         .padding(bottom = 6.dp)
                         .onFocusChanged { gridFocused = it.hasFocus }
