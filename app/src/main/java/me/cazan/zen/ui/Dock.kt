@@ -56,7 +56,9 @@ import androidx.compose.ui.unit.sp
 import me.cazan.zen.data.AppEntry
 import me.cazan.zen.data.AppRepository
 
-private val DockShape = RoundedCornerShape(40.dp)
+/** One corner radius for the panel, the focus highlight and the app icons, so all curves match. */
+private val DockCorner = 14.dp
+private val DockShape = RoundedCornerShape(DockCorner)
 private const val MaxVisible = 6
 private val SidePad = 24.dp
 private val Gap = 6.dp
@@ -102,7 +104,7 @@ fun DockRow(
             .clip(DockShape)
             .background(Color(0x1AFFFFFF))
             .border(1.dp, Color(0x52FFFFFF), DockShape)
-            .padding(vertical = 14.dp),
+            .padding(vertical = 4.dp),
     ) {
         // Up to six apps share the width evenly; beyond that the row scrolls and its edges fade.
         val visible = apps.size.coerceIn(1, MaxVisible)
@@ -114,7 +116,8 @@ fun DockRow(
             modifier = Modifier
                 .fillMaxWidth()
                 .then(if (scrolls) Modifier.fadeEdges() else Modifier),
-            contentPadding = PaddingValues(horizontal = SidePad),
+            // Vertical room so the focused item's highlight (scaled up 8%) isn't clipped flat.
+            contentPadding = PaddingValues(horizontal = SidePad, vertical = 12.dp),
             horizontalArrangement = Arrangement.spacedBy(Gap),
         ) {
             itemsIndexed(apps, key = { _, e -> e.key }) { index, entry ->
@@ -219,7 +222,7 @@ private fun DockItem(
             .focusable()
             .pointerInput(entry.key) { detectTapGestures(onTap = { onOpen() }, onLongPress = { onMenu() }) }
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            .clip(RoundedCornerShape(22.dp))
+            .clip(DockShape)
             .background(
                 when {
                     moving -> Color(0x408AB4FF)
@@ -235,7 +238,7 @@ private fun DockItem(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(RoundedCornerShape(12.dp))
+                .clip(DockShape)
                 .background(Color(0x33000000))
                 .graphicsLayer { alpha = logoAlpha },
             contentAlignment = Alignment.Center,
