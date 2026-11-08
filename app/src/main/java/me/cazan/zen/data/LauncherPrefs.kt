@@ -31,6 +31,8 @@ data class WatchItem(
     val key: String get() = "$type:$id"
 }
 
+enum class HomeLayout(val label: String) { GRID("Grid"), DOCK("Dock") }
+
 enum class ClockFormat(val label: String) { SYSTEM("Follow system"), H12("12-hour"), H24("24-hour") }
 
 data class WeatherPlace(
@@ -56,6 +58,7 @@ data class Config(
     val place: WeatherPlace? = null,
     val fahrenheit: Boolean = false,
     val animateWeather: Boolean = true,
+    val layout: HomeLayout = HomeLayout.GRID,
     /** Package opened by the remote's Assistant button (see AssistActivity), or null. */
     val assistApp: String? = null,
     val spotlight: Boolean = false,
@@ -155,6 +158,7 @@ class LauncherPrefs(context: Context) {
         place = sp.getString(K_PLACE, null)?.let(::parsePlace),
         fahrenheit = sp.getBoolean(K_FAHRENHEIT, false),
         animateWeather = sp.getBoolean(K_ANIMATE_WEATHER, true),
+        layout = HomeLayout.entries.firstOrNull { it.name == sp.getString(K_LAYOUT, null) } ?: HomeLayout.GRID,
         assistApp = sp.getString(K_ASSIST, null),
         spotlight = sp.getBoolean(K_SPOTLIGHT, false),
         tmdbKey = sp.getString(K_TMDB, null),
@@ -188,6 +192,7 @@ class LauncherPrefs(context: Context) {
             })
             .putBoolean(K_FAHRENHEIT, c.fahrenheit)
             .putBoolean(K_ANIMATE_WEATHER, c.animateWeather)
+            .putString(K_LAYOUT, c.layout.name)
             .putString(K_ASSIST, c.assistApp)
             .putBoolean(K_SPOTLIGHT, c.spotlight)
             .putString(K_TMDB, c.tmdbKey)
@@ -262,6 +267,7 @@ class LauncherPrefs(context: Context) {
         const val K_PLACE = "place"
         const val K_FAHRENHEIT = "fahrenheit"
         const val K_ANIMATE_WEATHER = "animate_weather"
+        const val K_LAYOUT = "layout"
         const val K_ASSIST = "assist_app"
         const val K_SPOTLIGHT = "spotlight"
         const val K_TMDB = "tmdb_key"

@@ -63,6 +63,7 @@ import androidx.compose.foundation.text.BasicText
 import androidx.compose.ui.text.TextStyle
 import me.cazan.zen.ZenApp
 import me.cazan.zen.data.ClockFormat
+import me.cazan.zen.data.HomeLayout
 import me.cazan.zen.data.Config
 import me.cazan.zen.data.MAX_COLUMNS
 import me.cazan.zen.data.MIN_COLUMNS
@@ -272,6 +273,9 @@ private fun AppearanceSection(app: ZenApp, config: Config, actions: SettingsActi
         if (status.isNotEmpty()) Note(status, color = Zen.Accent)
 
         SectionTitle("Layout")
+        ValueRow("Home layout", config.layout.label, {
+            app.prefs.update { it.copy(layout = HomeLayout.entries[(it.layout.ordinal + 1) % HomeLayout.entries.size]) }
+        })
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Txt("Apps per row", Modifier.width(220.dp), size = 18.sp)
             ZenButton("−", { app.prefs.update { it.copy(columns = (it.columns - 1).coerceAtLeast(MIN_COLUMNS)) } },

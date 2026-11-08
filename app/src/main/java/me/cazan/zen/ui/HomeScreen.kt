@@ -52,6 +52,7 @@ import androidx.compose.ui.unit.sp
 import me.cazan.zen.ZenApp
 import me.cazan.zen.data.AppEntry
 import me.cazan.zen.data.ClockFormat
+import me.cazan.zen.data.HomeLayout
 import me.cazan.zen.data.Config
 import me.cazan.zen.data.NetState
 import me.cazan.zen.data.SpotlightItem
@@ -306,6 +307,29 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                         color = Zen.TextFaint,
                     )
                 }
+            } else if (config.layout == HomeLayout.DOCK) {
+                // Dock: the wallpaper and spotlight breathe above, apps sit in one glass row below.
+                Spacer(Modifier.weight(1f))
+                DockRow(
+                    apps = tabApps,
+                    repo = app.apps,
+                    movingKey = movingKey,
+                    focusKey = focusKey,
+                    onFocusTaken = { focusKey = null },
+                    onOpen = { actions.launch(it) },
+                    onMenu = { menuFor = it },
+                    onMove = ::moveBy,
+                    onDrop = {
+                        focusKey = movingKey
+                        movingKey = null
+                    },
+                    firstRequester = firstTile,
+                    upTarget = selectedTabRequester,
+                    modifier = Modifier
+                        .padding(bottom = 6.dp)
+                        .onFocusChanged { gridFocused = it.hasFocus }
+                        .focusRestorer(firstTile),
+                )
             } else {
                 RowWindow(
                     count = tabApps.size,
