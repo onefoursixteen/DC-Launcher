@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyRow
@@ -205,7 +204,7 @@ private fun DockItem(
                                 press.longFired = true; onMenu()
                             }
                         } else if (ev.type == KeyEventType.KeyUp) {
-                            if (press.down && !press.longFired) { if (press.heldLong(native)) onMenu() else onOpen() }
+                            if (press.down && !press.longFired) { if (press.heldLong()) onMenu() else onOpen() }
                             press.down = false
                         }
                         true

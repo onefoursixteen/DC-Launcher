@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.runBlocking
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
-import java.net.Inet4Address
 import java.net.ServerSocket
 import java.net.Socket
 import java.net.URLDecoder
@@ -64,7 +63,7 @@ class AdminServer(
         failures = 0
         sessions.clear()
         val pin = (random.nextInt(900_000) + 100_000).toString()
-        val ip = localIpv4() ?: "<TV IP address>"
+        val ip = context.getSystemService(ConnectivityManager::class.java)?.let(::lanIpv4) ?: "<TV IP address>"
         state.value = State(true, "http://$ip:${socket.localPort}", pin)
         Thread({ serve(socket, pin) }, "zen-admin").apply { isDaemon = true }.start()
         main.removeCallbacks(autoStop)
@@ -202,9 +201,10 @@ class AdminServer(
         android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
         if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return bad("That file isn't a picture the TV can show (use JPG, PNG or WebP).")
         val dir = java.io.File(context.filesDir, "wallpapers").apply { mkdirs() }
-        dir.listFiles()?.filter { it.name.startsWith("upload_") }?.forEach { it.delete() }
         val file = java.io.File(dir, "upload_${System.currentTimeMillis()}")
         file.writeBytes(data)
+        // Only the current background is kept (pictures picked on the TV live here too).
+        dir.listFiles()?.filter { it != file }?.forEach { it.delete() }
         prefs.update { it.copy(wallpaper = Wallpaper.Image(file.absolutePath)) }
         event("New background uploaded from the web page")
         return redirect("/?m=" + enc("Background updated (${bounds.outWidth}×${bounds.outHeight}).") + "#background")
@@ -369,7 +369,7 @@ $body
             path = target.substringBefore('?'),
             query = decodeForm(target.substringAfter('?', "")),
             cookies = cookies,
-            form = if (length > 0) decodeForm(readBody(input, length)) else emptyMap(),
+            form = if (length > 0) decodeForm(String(readBytes(input, length), Charsets.UTF_8)) else emptyMap(),
         )
     }
 
@@ -398,29 +398,11 @@ $body
         return if (read == length) bytes else bytes.copyOf(read)
     }
 
-    private fun readBody(input: InputStream, length: Int): String {
-        val bytes = ByteArray(length)
-        var read = 0
-        while (read < length) {
-            val n = input.read(bytes, read, length - read)
-            if (n < 0) break
-            read += n
-        }
-        return String(bytes, 0, read, Charsets.UTF_8)
-    }
-
     private fun decodeForm(s: String): Map<String, String> = s.split('&').mapNotNull { pair ->
         val k = pair.substringBefore('=', "")
         if (k.isEmpty()) null
         else runCatching { URLDecoder.decode(k, "UTF-8") to URLDecoder.decode(pair.substringAfter('='), "UTF-8") }.getOrNull()
     }.toMap()
-
-    private fun localIpv4(): String? {
-        val cm = context.getSystemService(ConnectivityManager::class.java) ?: return null
-        val props = cm.getLinkProperties(cm.activeNetwork) ?: return null
-        return props.linkAddresses.map { it.address }
-            .firstOrNull { it is Inet4Address && !it.isLoopbackAddress }?.hostAddress
-    }
 
     private fun enc(s: String) = URLEncoder.encode(s, "UTF-8")
 

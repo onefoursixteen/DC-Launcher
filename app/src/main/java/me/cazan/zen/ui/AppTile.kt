@@ -65,8 +65,7 @@ internal class PressTracker {
  * key-up with no auto-repeat in between, so a long press must also be recognised by how long
  * the key was held when it's released.
  */
-@Suppress("UNUSED_PARAMETER")
-internal fun PressTracker.heldLong(up: NativeKeyEvent) =
+internal fun PressTracker.heldLong() =
     android.os.SystemClock.uptimeMillis() - downAt >= android.view.ViewConfiguration.getLongPressTimeout()
 
 internal fun isSelectKey(code: Int) = code == NativeKeyEvent.KEYCODE_DPAD_CENTER ||
@@ -167,7 +166,7 @@ fun AppTile(
                     }
                 } else if (ev.type == KeyEventType.KeyUp) {
                     if (press.down && !press.longFired) {
-                        if (press.heldLong(native)) onMenu() else onClick()
+                        if (press.heldLong()) onMenu() else onClick()
                     }
                     press.down = false
                 }

@@ -1,6 +1,6 @@
-"""Renders the DC Launcher banner/icon (house with a TV, DC Connect style) and a preview on the TV screenshot."""
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
-import math, sys
+"""Renders the DC Launcher banner/icon (house with a TV, DC Connect style)."""
+from PIL import Image, ImageDraw, ImageFilter
+import math
 
 def lerp(a, b, t): t = max(0, min(1, t)); return tuple(int(a[i] + (b[i] - a[i]) * t) for i in range(3))
 def hexc(h): return tuple(int(h[i:i + 2], 16) for i in (1, 3, 5))
@@ -64,16 +64,4 @@ I = 512; ic = background(I, I).convert('RGBA'); hs = int(I * 0.74); ic = place(i
 m = Image.new('L', (I, I), 0); ImageDraw.Draw(m).rounded_rectangle([0, 0, I - 1, I - 1], radius=int(I * 0.17), fill=255)
 o = Image.new('RGBA', (I, I), (0, 0, 0, 0)); o.paste(ic, (0, 0), m); o.save('dc_icon_512.png')
 
-shot = Image.open('../screenshots/chromecast-20261027-205740.png').convert('RGB')
-x0, y0, x1, y1 = 469, 379, 762, 544
-tile = b.convert('RGB').resize((x1 - x0, y1 - y0), Image.LANCZOS)
-mk = Image.new('L', tile.size, 0); ImageDraw.Draw(mk).rounded_rectangle([0, 0, tile.size[0] - 1, tile.size[1] - 1], radius=22, fill=255)
-shot.paste(tile, (x0, y0), mk)
-L, R, T, B = x0 - 25, x1 + 25, 562, 616; px = shot.load()
-for y in range(T, B):
-    a = px[L - 1, y]; c = px[R + 1, y]
-    for x in range(L, R): px[x, y] = lerp(a, c, (x - L) / (R - L))
-d = ImageDraw.Draw(shot); f = ImageFont.truetype('/System/Library/Fonts/Supplemental/Arial.ttf', 30)
-t = 'DC Launcher'; d.text(((x0 + x1) / 2 - d.textlength(t, font=f) / 2, 571), t, font=f, fill=(214, 220, 229))
-shot.save('preview_on_chromecast.png'); shot.crop((96, 360, 1100, 640)).save('preview_closeup.png')
 print('ok')

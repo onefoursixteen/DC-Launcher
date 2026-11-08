@@ -19,6 +19,23 @@ enum class NetType { ETHERNET, WIFI, OTHER, OFFLINE }
 /** [type] is the underlying link; [vpn] is true when traffic goes through a VPN on top of it. */
 data class NetState(val type: NetType, val vpn: Boolean, val ip: String?)
 
+/**
+ * The TV's home-network IPv4 (never the VPN tunnel's): shown in the network panel and used
+ * for the web admin address, which must be reachable from a phone on the same network.
+ */
+@Suppress("DEPRECATION") // allNetworks is the only way to see a VPN's sibling networks on old APIs
+internal fun lanIpv4(cm: ConnectivityManager): String? = runCatching {
+    val active = cm.activeNetwork ?: return null
+    val vpn = cm.getNetworkCapabilities(active)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == true
+    val candidates = if (!vpn) listOf(active) else cm.allNetworks.filter {
+        cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == false
+    }
+    candidates.firstNotNullOfOrNull { n ->
+        cm.getLinkProperties(n)?.linkAddresses?.map { it.address }
+            ?.firstOrNull { it is Inet4Address && !it.isLoopbackAddress }?.hostAddress
+    }
+}.getOrNull()
+
 /** Callback-driven (no polling); registered only while the home screen is visible. */
 class NetworkMonitor(private val context: Context) {
     private val cm = context.getSystemService(ConnectivityManager::class.java)
@@ -62,20 +79,8 @@ class NetworkMonitor(private val context: Context) {
             caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> NetType.WIFI
             else -> underlyingType()
         }
-        return NetState(type, vpn, lanAddress(network, vpn))
+        return NetState(type, vpn, lanIpv4(cm))
     }
-
-    /** The TV's home-network IPv4 (not the VPN tunnel's), e.g. for the web admin address. */
-    @Suppress("DEPRECATION")
-    private fun lanAddress(active: Network, vpn: Boolean): String? = runCatching {
-        val candidates = if (!vpn) listOf(active) else cm!!.allNetworks.filter {
-            cm.getNetworkCapabilities(it)?.hasTransport(NetworkCapabilities.TRANSPORT_VPN) == false
-        }
-        candidates.firstNotNullOfOrNull { n ->
-            cm!!.getLinkProperties(n)?.linkAddresses?.map { it.address }
-                ?.firstOrNull { it is Inet4Address && !it.isLoopbackAddress }?.hostAddress
-        }
-    }.getOrNull()
 
     @Suppress("DEPRECATION") // allNetworks is the only way to see a VPN's sibling networks on old APIs
     private fun anyVpnNetwork(): Boolean = runCatching {

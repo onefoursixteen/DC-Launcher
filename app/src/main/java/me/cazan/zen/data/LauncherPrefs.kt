@@ -1,12 +1,13 @@
 package me.cazan.zen.data
 
 import android.content.Context
+import androidx.core.content.edit
+import java.util.UUID
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import org.json.JSONArray
 import org.json.JSONObject
-import java.util.UUID
 
 data class Category(val id: String, val name: String, val apps: List<String>)
 
@@ -69,6 +70,18 @@ data class Config(
     /** "type:id" keys the user dismissed from the spotlight. */
     val notInterested: Set<String> = emptySet(),
     val watchlist: List<WatchItem> = emptyList(),
+    /** Signed-in TMDB account for watchlist sync; null when not connected. Never shown on the web page. */
+    val tmdbAccount: TmdbAccount? = null,
+)
+
+/** A TMDB user session (v3 session_id) approved by the user on themoviedb.org. */
+data class TmdbAccount(
+    val sessionId: String,
+    val accountId: Int,
+    val username: String,
+    /** Keys that were on both the TV and TMDB after the last sync; tells a removal from an addition. */
+    val synced: Set<String> = emptySet(),
+    val syncedAt: Long = 0L,
 )
 
 const val MIN_COLUMNS = 3
@@ -165,46 +178,51 @@ class LauncherPrefs(context: Context) {
         onlyMine = sp.getBoolean(K_ONLY_MINE, false),
         notInterested = sp.getStringSet(K_NOT_INTERESTED, null)?.toSet() ?: emptySet(),
         watchlist = parseWatchlist(sp.getString(K_WATCHLIST, null)),
+        tmdbAccount = sp.getString(K_TMDB_ACCOUNT, null)?.let(::parseAccount),
     )
 
     private fun save(c: Config) {
-        sp.edit()
-            .putStringSet(K_HIDDEN, HashSet(c.hidden))
-            .putStringSet(K_FAVORITES, HashSet(c.favorites))
-            .putString(K_ORDER, c.order.joinToString("\n"))
-            .putString(K_CATEGORIES, JSONArray().apply {
+        sp.edit {
+            putStringSet(K_HIDDEN, HashSet(c.hidden))
+            putStringSet(K_FAVORITES, HashSet(c.favorites))
+            putString(K_ORDER, c.order.joinToString("\n"))
+            putString(K_CATEGORIES, JSONArray().apply {
                 c.categories.forEach { cat ->
                     put(JSONObject().put("id", cat.id).put("name", cat.name).put("apps", JSONArray(cat.apps)))
                 }
             }.toString())
-            .putString(K_WALLPAPER, when (val w = c.wallpaper) {
+            putString(K_WALLPAPER, when (val w = c.wallpaper) {
                 is Wallpaper.Solid -> "solid:" + java.lang.Long.toHexString(w.argb)
                 is Wallpaper.Gradient -> "gradient:${w.preset}"
                 is Wallpaper.Image -> "image:${w.source}"
             })
-            .putInt(K_COLUMNS, c.columns)
-            .putBoolean(K_LABELS, c.showLabels)
-            .putString(K_CLOCK, c.clock.name)
-            .putBoolean(K_WEATHER, c.showWeather)
-            .putString(K_PLACE, c.place?.let {
+            putInt(K_COLUMNS, c.columns)
+            putBoolean(K_LABELS, c.showLabels)
+            putString(K_CLOCK, c.clock.name)
+            putBoolean(K_WEATHER, c.showWeather)
+            putString(K_PLACE, c.place?.let {
                 JSONObject().put("name", it.name).put("lat", it.lat).put("lon", it.lon)
                     .putOpt("cc", it.countryCode).putOpt("country", it.country).toString()
             })
-            .putBoolean(K_FAHRENHEIT, c.fahrenheit)
-            .putBoolean(K_ANIMATE_WEATHER, c.animateWeather)
-            .putString(K_LAYOUT, c.layout.name)
-            .putString(K_ASSIST, c.assistApp)
-            .putBoolean(K_SPOTLIGHT, c.spotlight)
-            .putString(K_TMDB, c.tmdbKey)
-            .putBoolean(K_ONLY_MINE, c.onlyMine)
-            .putStringSet(K_NOT_INTERESTED, HashSet(c.notInterested))
-            .putString(K_WATCHLIST, JSONArray().apply {
+            putBoolean(K_FAHRENHEIT, c.fahrenheit)
+            putBoolean(K_ANIMATE_WEATHER, c.animateWeather)
+            putString(K_LAYOUT, c.layout.name)
+            putString(K_ASSIST, c.assistApp)
+            putBoolean(K_SPOTLIGHT, c.spotlight)
+            putString(K_TMDB, c.tmdbKey)
+            putBoolean(K_ONLY_MINE, c.onlyMine)
+            putStringSet(K_NOT_INTERESTED, HashSet(c.notInterested))
+            putString(K_WATCHLIST, JSONArray().apply {
                 c.watchlist.forEach { w ->
                     put(JSONObject().put("type", w.type).put("id", w.id).put("title", w.title).put("year", w.year)
                         .putOpt("backdrop", w.backdrop).put("overview", w.overview).put("added", w.addedAt))
                 }
             }.toString())
-            .apply()
+            putString(K_TMDB_ACCOUNT, c.tmdbAccount?.let { a ->
+                JSONObject().put("session", a.sessionId).put("id", a.accountId).put("user", a.username)
+                    .put("synced", JSONArray(a.synced.toList())).put("at", a.syncedAt).toString()
+            })
+        }
     }
 
     private fun parseCategories(raw: String?): List<Category> = runCatching {
@@ -246,6 +264,12 @@ class LauncherPrefs(context: Context) {
         } ?: Wallpaper.Gradient(0)
     }
 
+    private fun parseAccount(raw: String): TmdbAccount? = runCatching {
+        val o = JSONObject(raw)
+        val synced = o.optJSONArray("synced")?.let { a -> List(a.length()) { a.getString(it) }.toSet() }.orEmpty()
+        TmdbAccount(o.getString("session"), o.getInt("id"), o.optString("user"), synced, o.optLong("at"))
+    }.getOrNull()
+
     private fun parsePlace(raw: String): WeatherPlace? = runCatching {
         val o = JSONObject(raw)
         WeatherPlace(
@@ -274,6 +298,7 @@ class LauncherPrefs(context: Context) {
         const val K_ONLY_MINE = "only_mine"
         const val K_NOT_INTERESTED = "not_interested"
         const val K_WATCHLIST = "watchlist"
+        const val K_TMDB_ACCOUNT = "tmdb_account"
     }
 }
 

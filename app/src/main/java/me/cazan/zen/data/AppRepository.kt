@@ -13,6 +13,8 @@ import android.graphics.drawable.Drawable
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.core.graphics.createBitmap
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -20,7 +22,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import java.util.concurrent.ConcurrentHashMap
 
 data class AppEntry(
     /** "package/activityClass", stable across launches; used as the key everywhere. */
@@ -155,7 +156,7 @@ private fun Drawable.render(width: Int, height: Int): Bitmap {
         val src = bitmap
         if (src != null && src.width == width && src.height == height) return src
     }
-    val bmp = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+    val bmp = createBitmap(width, height)
     val oldBounds = copyBounds()
     setBounds(0, 0, width, height)
     draw(Canvas(bmp))

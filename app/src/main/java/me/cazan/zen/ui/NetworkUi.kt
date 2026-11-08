@@ -1,5 +1,6 @@
 package me.cazan.zen.ui
 
+import android.annotation.SuppressLint
 import android.content.Intent
 import android.provider.Settings
 import androidx.compose.foundation.layout.Row
@@ -48,6 +49,7 @@ private fun InfoLine(label: String, value: String, valueColor: androidx.compose.
  * Connection details plus VPN controls. Android only lets the app that owns a VPN switch it
  * off, so "Disconnect" opens that app on its connection screen.
  */
+@SuppressLint("InlinedApi") // the VPN settings item is shown only if the TV resolves it
 @Composable
 fun NetworkDialog(
     net: NetState,

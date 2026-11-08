@@ -14,7 +14,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -42,14 +41,16 @@ import androidx.compose.ui.input.key.onKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.os.ConfigurationCompat
+import java.util.Locale
 import me.cazan.zen.data.AppEntry
 import me.cazan.zen.data.SpotlightItem
 import me.cazan.zen.data.SpotlightRepository
 import me.cazan.zen.data.providerApps
-import java.util.Locale
 
 private val Horizontal = Brush.horizontalGradient(
     0f to Color(0xF00E1116), 0.38f to Color(0xA60E1116), 0.75f to Color(0x000E1116),
@@ -127,7 +128,7 @@ fun SpotlightPanel(
             .background(if (focused) Color(0x24FFFFFF) else Color.Transparent)
             .padding(horizontal = 16.dp, vertical = 12.dp),
     ) {
-        Txt(item.reason.uppercase(Locale.getDefault()), size = 12.sp, color = Zen.Accent, weight = FontWeight.Medium)
+        Txt(item.reason.uppercase(ConfigurationCompat.getLocales(LocalConfiguration.current)[0] ?: Locale.US), size = 12.sp, color = Zen.Accent, weight = FontWeight.Medium)
         Spacer(Modifier.height(6.dp))
         Box(Modifier.heightIn(min = 34.dp, max = 46.dp), contentAlignment = Alignment.CenterStart) {
             val l = logo

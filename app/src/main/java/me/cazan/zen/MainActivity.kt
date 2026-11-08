@@ -1,11 +1,11 @@
 package me.cazan.zen
 
+import android.annotation.SuppressLint
 import android.content.ActivityNotFoundException
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
-import android.net.Uri
 import android.os.Bundle
 import android.os.SystemClock
 import android.provider.Settings
@@ -19,18 +19,19 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
+import androidx.core.net.toUri
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.lifecycleScope
 import androidx.lifecycle.repeatOnLifecycle
-import me.cazan.zen.data.AppEntry
-import me.cazan.zen.data.WeatherPlace
-import me.cazan.zen.ui.HomeActions
-import me.cazan.zen.ui.HomeScreen
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
+import me.cazan.zen.data.AppEntry
+import me.cazan.zen.data.WeatherPlace
+import me.cazan.zen.ui.HomeActions
+import me.cazan.zen.ui.HomeScreen
 
 private data class TmdbWork(val spotlight: Boolean, val key: String?, val place: WeatherPlace?, val watchKeys: List<String>)
 
@@ -69,9 +70,9 @@ class MainActivity : ComponentActivity() {
                     openSystemSettings = { safeStart(Intent(Settings.ACTION_SETTINGS)) },
                     openSettingsPage = { action -> safeStart(Intent(action)) },
                     appInfo = { e ->
-                        safeStart(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:${e.packageName}")))
+                        safeStart(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${e.packageName}".toUri()))
                     },
-                    uninstall = { e -> safeStart(Intent(Intent.ACTION_DELETE, Uri.parse("package:${e.packageName}"))) },
+                    uninstall = { e -> safeStart(Intent(Intent.ACTION_DELETE, "package:${e.packageName}".toUri())) },
                 ),
             )
         }
@@ -104,6 +105,26 @@ class MainActivity : ComponentActivity() {
                         if (place == null) return@collectLatest
                         while (true) {
                             app.weather.refresh(place)
+                            delay(15 * 60_000L)
+                        }
+                    }
+            }
+        }
+
+        // TMDB account watchlist: pulled when home appears (at most every 5 minutes) and every
+        // 15 minutes while it stays visible. Local changes are pushed by TmdbSync itself.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                app.prefs.config
+                    .map { c -> c.tmdbAccount?.sessionId?.takeIf { c.tmdbKey != null } }
+                    .distinctUntilChanged()
+                    .collectLatest { session ->
+                        if (session == null) return@collectLatest
+                        val last = app.prefs.config.value.tmdbAccount?.syncedAt ?: 0L
+                        val wait = 5 * 60_000L - (System.currentTimeMillis() - last)
+                        if (wait > 0) delay(wait)
+                        while (true) {
+                            app.tmdbSync.sync()
                             delay(15 * 60_000L)
                         }
                     }
@@ -168,6 +189,7 @@ class MainActivity : ComponentActivity() {
      * chips each one costs a focus search + scroll + recomposition, so the grid falls behind
      * and "overshoots" when the key is released. Capping at ~16 moves/s keeps it responsive.
      */
+    @SuppressLint("RestrictedApi") // lint false positive: overriding and calling super is allowed
     override fun dispatchKeyEvent(event: KeyEvent): Boolean {
         if (event.action == KeyEvent.ACTION_DOWN && event.repeatCount > 0 && event.keyCode in DPAD_KEYS) {
             val now = SystemClock.uptimeMillis()

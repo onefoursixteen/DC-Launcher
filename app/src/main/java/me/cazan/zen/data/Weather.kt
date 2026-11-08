@@ -67,18 +67,6 @@ class WeatherRepository {
     }
 }
 
-/** WMO weather code → a single glyph that ships with Android's system fonts. */
-fun weatherGlyph(code: Int): String = when (code) {
-    0 -> "☀"
-    1, 2 -> "⛅"
-    3 -> "☁"
-    45, 48 -> "≋"
-    in 51..67, in 80..82 -> "☂"
-    in 71..77, 85, 86 -> "❄"
-    in 95..99 -> "⚡"
-    else -> "☁"
-}
-
 fun weatherLabel(code: Int): String = when (code) {
     0 -> "Clear"
     1 -> "Mostly clear"

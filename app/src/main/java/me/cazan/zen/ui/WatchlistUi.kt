@@ -3,7 +3,6 @@ package me.cazan.zen.ui
 import android.view.KeyEvent as NativeKeyEvent
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -99,7 +98,7 @@ fun WatchTile(
                                 }
                             } else if (ev.type == KeyEventType.KeyUp) {
                                 if (press.down && !press.longFired) {
-                                    if (press.heldLong(native)) onMenu() else onClick()
+                                    if (press.heldLong()) onMenu() else onClick()
                                 }
                                 press.down = false
                             }

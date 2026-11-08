@@ -1,5 +1,22 @@
 # Changelog
 
+## Unreleased
+
+### New
+- **TMDB watchlist sync** (Settings → Spotlight): connect your TMDB account by scanning a QR
+  code and approving it on themoviedb.org (your password is never typed on the TV). Titles
+  added or removed on either side show up on the other.
+
+### Fixed
+- The Web Admin address now shows the TV's home-network IP even while a VPN is connected.
+- Picking a file that isn't a picture no longer leaves the home screen without a background.
+- Wallpaper URLs with stray spaces are accepted.
+- Old background files are cleaned up whichever way the new one was set.
+- Settings (including the TMDB key and account) are excluded from cloud backup and device transfer.
+
+### Cleaned up
+- Removed unused code, imports and leftover design mock-ups, and the debug-only weather preview screen.
+
 ## v1.1.0 — 2026-11-08
 
 ### New

@@ -201,15 +201,19 @@ class SpotlightRepository(private val context: Context) {
         )
     }
 
-    private fun tmdb(key: String, path: String): JSONObject {
+    private fun tmdb(key: String, path: String): JSONObject = tmdbSend(key, "GET", path, null)
+
+    /** Any v3 call. v4 "API Read Access Tokens" are JWTs sent as a header; v3 keys are 32 hex chars. */
+    internal fun tmdbSend(key: String, method: String, path: String, body: JSONObject?): JSONObject {
         val k = key.trim()
-        // v4 "API Read Access Tokens" are JWTs; v3 keys are 32 hex chars.
-        return if (k.startsWith("eyJ")) {
-            JSONObject(httpGetText(API + path, mapOf("Authorization" to "Bearer $k", "Accept" to "application/json")))
+        val (url, headers) = if (k.startsWith("eyJ")) {
+            API + path to mapOf("Authorization" to "Bearer $k", "Accept" to "application/json")
         } else {
             val sep = if ('?' in path) '&' else '?'
-            JSONObject(httpGetText("$API$path${sep}api_key=$k"))
+            "$API$path${sep}api_key=$k" to mapOf("Accept" to "application/json")
         }
+        val text = if (method == "GET" && body == null) httpGetText(url, headers) else httpSend(method, url, headers, body?.toString())
+        return JSONObject(text)
     }
 
     /** Returns null when the key works, otherwise a human-readable reason. */

@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
+import android.graphics.BitmapFactory
 import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
@@ -112,15 +113,19 @@ class SettingsActivity : ComponentActivity() {
     private fun importWallpaper(uri: Uri) {
         lifecycleScope.launch {
             val file = withContext(Dispatchers.IO) {
+                val dir = File(filesDir, "wallpapers").apply { mkdirs() }
+                val dest = File(dir, "picked_${System.currentTimeMillis()}")
                 runCatching {
-                    val dir = File(filesDir, "wallpapers").apply { mkdirs() }
-                    dir.listFiles()?.forEach { it.delete() }
-                    val dest = File(dir, "picked_${System.currentTimeMillis()}")
                     contentResolver.openInputStream(uri)!!.use { input ->
                         dest.outputStream().use { input.copyTo(it) }
                     }
+                    // Keep the current background until the new file is known to be a picture.
+                    val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+                    BitmapFactory.decodeFile(dest.path, bounds)
+                    check(bounds.outWidth > 0 && bounds.outHeight > 0)
+                    dir.listFiles()?.filter { it != dest }?.forEach { it.delete() }
                     dest
-                }.getOrNull()
+                }.onFailure { dest.delete() }.getOrNull()
             }
             if (file == null) toast("Couldn't read that image.")
             else app.prefs.update { it.copy(wallpaper = Wallpaper.Image(file.absolutePath)) }

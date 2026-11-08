@@ -2,8 +2,6 @@ package me.cazan.zen.ui
 
 import android.os.Debug
 import androidx.compose.foundation.ExperimentalFoundationApi
-import androidx.compose.foundation.relocation.BringIntoViewRequester
-import androidx.compose.foundation.relocation.bringIntoViewRequester
 import me.cazan.zen.ensureRegion
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -297,15 +295,16 @@ private fun AppearanceSection(app: ZenApp, config: Config, actions: SettingsActi
             hint = "https://example.com/wallpaper.jpg",
             keyboardType = KeyboardType.Uri,
             onDismiss = { askUrl = false },
-            onDone = { url ->
+            onDone = { input ->
                 askUrl = false
+                val url = input.trim()
                 status = "Downloading…"
                 scope.launch {
                     val dm = context.resources.displayMetrics
                     val ok = url.startsWith("https://") &&
-                        WallpaperLoader.load(context, url.trim(), dm.widthPixels, dm.heightPixels) != null
+                        WallpaperLoader.load(context, url, dm.widthPixels, dm.heightPixels) != null
                     status = if (ok) {
-                        setWallpaper(Wallpaper.Image(url.trim()))
+                        setWallpaper(Wallpaper.Image(url))
                         "Wallpaper set."
                     } else {
                         "Couldn't load that image. Use an https:// link to a JPG, PNG or WebP file."
@@ -366,6 +365,8 @@ private fun InfoRow(label: String, value: String) {
 @Composable
 private fun SpotlightSection(app: ZenApp, config: Config) {
     val status by app.spotlight.status.collectAsState()
+    val syncStatus by app.tmdbSync.status.collectAsState()
+    var connecting by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val place = config.place
     val region = place?.countryCode
@@ -409,7 +410,37 @@ private fun SpotlightSection(app: ZenApp, config: Config) {
                 if (status.isNotEmpty()) Txt(status, size = 15.sp, color = Zen.TextDim)
             }
         }
+
+        SectionTitle("TMDB watchlist sync")
+        val account = config.tmdbAccount
+        if (account == null) {
+            Note("Connect your TMDB account to keep this watchlist and your TMDB watchlist the same: " +
+                "titles you add or remove on either side show up on the other.")
+            ZenListItem(
+                "Connect TMDB account",
+                { if (key != null) connecting = true },
+                detail = if (key == null) "Needs a TMDB key: add it in Web Admin" else "Approve it on your phone with a QR code",
+            )
+        } else {
+            InfoRow("Account", account.username.ifEmpty { "Connected" })
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                ZenButton("Sync now", { scope.launch { app.tmdbSync.sync() } })
+                ZenButton("Disconnect", { app.tmdbSync.disconnect() })
+                Txt(syncStatus.ifEmpty { if (account.syncedAt > 0) "Synced" else "Not synced yet" }, size = 15.sp, color = Zen.TextDim)
+            }
+            Note("Disconnecting keeps both watchlists as they are.", Modifier.padding(horizontal = 18.dp), color = Zen.TextFaint)
+        }
         Note("This product uses the TMDB API but is not endorsed or certified by TMDB.", color = Zen.TextFaint)
+    }
+
+    val key = config.tmdbKey
+    if (connecting && key != null) {
+        TmdbConnectDialog(
+            sync = app.tmdbSync,
+            key = key,
+            onConnected = { connecting = false; scope.launch { app.tmdbSync.sync() } },
+            onClose = { connecting = false },
+        )
     }
 }
 
@@ -657,7 +688,7 @@ private fun AboutSection(actions: SettingsActions) {
     ScrollPage {
         SectionTitle("DC Launcher ${actions.versionName}")
         Note("No ads. No recommendations. No analytics, crash reporting or tracking of any kind.")
-        Note("The network is only used for the weather and URL wallpapers you set up yourself.")
+        Note("The network is only used for things you set up yourself: the weather, TMDB (spotlight, watchlist and account sync) and URL wallpapers.")
         Note("Memory in use right now: about $memInfo MB.", color = Zen.Accent)
         Spacer(Modifier.height(8.dp))
         Label("Remote shortcuts")

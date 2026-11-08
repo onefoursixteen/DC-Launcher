@@ -1,5 +1,6 @@
 package me.cazan.zen.ui
 
+import android.annotation.SuppressLint
 import android.text.format.DateFormat as AndroidDateFormat
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -22,54 +23,54 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.key
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.animation.core.animateDpAsState
-import androidx.compose.animation.core.tween
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.focus.FocusRequester
-import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusProperties
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.focus.focusRestorer
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.os.ConfigurationCompat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import me.cazan.zen.ZenApp
 import me.cazan.zen.data.AppEntry
 import me.cazan.zen.data.ClockFormat
-import me.cazan.zen.data.HomeLayout
 import me.cazan.zen.data.Config
+import me.cazan.zen.data.HomeLayout
 import me.cazan.zen.data.NetState
 import me.cazan.zen.data.SpotlightItem
 import me.cazan.zen.data.WatchItem
 import me.cazan.zen.data.WatchStatus
+import me.cazan.zen.data.WeatherNow
 import me.cazan.zen.data.providerApps
 import me.cazan.zen.data.toSpotlight
 import me.cazan.zen.data.toWatchItem
 import me.cazan.zen.data.watchDetail
 import me.cazan.zen.data.watchLabel
-import me.cazan.zen.data.WeatherNow
 import me.cazan.zen.data.weatherLabel
-import kotlinx.coroutines.delay
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import kotlin.math.roundToInt
 
 private const val TAB_FAVORITES = "fav"
 private const val TAB_ALL = "all"
@@ -109,6 +110,7 @@ private fun WatchItem.asSpotlight(s: WatchStatus?): SpotlightItem =
     s?.let { toSpotlight(it, "On your watchlist") }
         ?: SpotlightItem(id, type, title, overview, year, emptyList(), 0.0, backdrop.orEmpty(), null, emptyList(), "On your watchlist")
 
+@SuppressLint("RememberInComposition") // tab FocusRequesters live in a remembered map
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
 fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActions) {
@@ -170,12 +172,7 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
     val watchCols = config.columns.coerceAtLeast(4)
     var spotFocused by remember { mutableStateOf(false) }
     var spotDetails by remember { mutableStateOf<SpotlightItem?>(null) }
-    var gridFocused by remember { mutableStateOf(false) }
-    var focusedIndex by remember { mutableIntStateOf(0) }
-    // Scrolling past the first row hands the whole screen to the grid.
     // The spotlight stays put; only the two-row app window below it slides.
-    val spotCollapsed = false
-    val spotHeight = SPOTLIGHT_HEIGHT
     var windowTop by remember { mutableIntStateOf(0) }
     LaunchedEffect(tabId) { windowTop = 0 }
     LaunchedEffect(movingKey, tabApps) {
@@ -183,8 +180,8 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
         if (i >= 0) windowTop = windowTopFor(i / config.columns, windowTop)
     }
 
-    LaunchedEffect(spotOn, spotFocused, visible, spotCollapsed, spotList.size, spotDetails) {
-        if (!spotOn || spotFocused || !visible || spotCollapsed || spotDetails != null) return@LaunchedEffect
+    LaunchedEffect(spotOn, spotFocused, visible, spotList.size, spotDetails) {
+        if (!spotOn || spotFocused || !visible || spotDetails != null) return@LaunchedEffect
         while (true) {
             delay(SPOTLIGHT_ROTATE_MS)
             spotIndex = (spotIndex + 1).mod(spotList.size)
@@ -249,13 +246,13 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
 
     Box(Modifier.fillMaxSize()) {
         WallpaperLayer(config.wallpaper)
-        if (config.spotlight) SpotlightBackdrop(app.spotlight, spotItem, shown = spotOn && !spotCollapsed)
+        if (config.spotlight) SpotlightBackdrop(app.spotlight, spotItem, shown = spotOn)
 
         // 5% / 2.5% safe-area padding: keeps everything inside TV overscan.
         Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 27.dp)) {
             TopBar(config, weather, net, actions, homeVisible = visible) { showNetwork = true }
             if (spotOn && spotItem != null) {
-                Box(Modifier.fillMaxWidth().height(spotHeight).clipToBounds(), contentAlignment = Alignment.BottomStart) {
+                Box(Modifier.fillMaxWidth().height(SPOTLIGHT_HEIGHT).clipToBounds(), contentAlignment = Alignment.BottomStart) {
                     SpotlightPanel(
                         repo = app.spotlight,
                         item = spotItem,
@@ -265,7 +262,7 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                         onFocusChanged = { spotFocused = it },
                         onStep = { spotIndex = (spotIndex + it).mod(spotList.size) },
                         onOpen = { spotDetails = spotItem },
-                        modifier = Modifier.padding(start = 0.dp).fillMaxWidth(0.62f),
+                        modifier = Modifier.fillMaxWidth(0.62f),
                     )
                 }
             }
@@ -280,7 +277,6 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .onFocusChanged { gridFocused = it.hasFocus }
                         .focusRestorer(firstTile),
                 ) { index, tileWidth ->
                     val w = config.watchlist[index]
@@ -292,7 +288,6 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                         wantsFocus = focusKey == w.key,
                         onFocusTaken = { focusKey = null },
                         onFocused = {
-                            focusedIndex = index
                             windowTop = windowTopFor(index / watchCols, windowTop)
                         },
                         // Always show details first (overview, next episode, where to watch);
@@ -334,7 +329,6 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                     scrollReset = scrollReset,
                     modifier = Modifier
                         .padding(bottom = 6.dp)
-                        .onFocusChanged { gridFocused = it.hasFocus }
                         .focusRestorer(firstTile),
                 )
             } else {
@@ -345,7 +339,6 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
-                        .onFocusChanged { gridFocused = it.hasFocus }
                         .focusRestorer(firstTile),
                 ) { index, tileWidth ->
                     val entry = tabApps[index]
@@ -374,8 +367,7 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                             // Row end: RIGHT stays put instead of escaping to the top-bar buttons.
                             rowEnd = index % config.columns == config.columns - 1 || index == tabApps.lastIndex,
                             onFocused = {
-                                focusedIndex = index
-                                windowTop = windowTopFor(index / config.columns, windowTop)
+                                    windowTop = windowTopFor(index / config.columns, windowTop)
                             },
                         )
                     }
@@ -499,7 +491,8 @@ private fun TopBar(config: Config, weather: WeatherNow?, net: NetState, actions:
         ClockFormat.H12 -> false
         ClockFormat.H24 -> true
     }
-    val locale = Locale.getDefault()
+    // Read through the configuration so the clock re-renders if the TV language changes.
+    val locale = ConfigurationCompat.getLocales(LocalConfiguration.current)[0] ?: Locale.US
     val time = remember(now, is24h) { SimpleDateFormat(if (is24h) "HH:mm" else "h:mm", locale).format(Date(now)) }
     val amPm = remember(now, is24h) { if (is24h) "" else SimpleDateFormat("a", locale).format(Date(now)) }
     val date = remember(now) {
@@ -547,6 +540,7 @@ private fun WeatherChip(weather: WeatherNow, fahrenheit: Boolean, animate: Boole
 
 // ---------------------------------------------------------------- tabs
 
+@SuppressLint("RememberInComposition") // requesters live in the caller's remembered map
 @Composable
 private fun TabRow(
     tabs: List<TabSpec>,

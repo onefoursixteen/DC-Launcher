@@ -8,6 +8,7 @@ import me.cazan.zen.data.AppRepository
 import me.cazan.zen.data.LauncherPrefs
 import me.cazan.zen.data.NetworkMonitor
 import me.cazan.zen.data.SpotlightRepository
+import me.cazan.zen.data.TmdbSync
 import me.cazan.zen.data.WallpaperLoader
 import me.cazan.zen.data.WatchlistRepository
 import me.cazan.zen.data.WeatherRepository
@@ -21,6 +22,12 @@ class ZenApp : Application() {
     val spotlight by lazy { SpotlightRepository(this) }
     val watchlist by lazy { WatchlistRepository(this, spotlight) }
     val admin by lazy { AdminServer(this, prefs, spotlight, watchlist, apps) }
+    val tmdbSync by lazy { TmdbSync(prefs, spotlight) }
+
+    override fun onCreate() {
+        super.onCreate()
+        tmdbSync.start()
+    }
 
     @Suppress("DEPRECATION") // trim levels are still delivered on the older TVs this targets
     override fun onTrimMemory(level: Int) {

@@ -22,9 +22,9 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.google.zxing.BarcodeFormat
@@ -41,38 +41,43 @@ private fun qrMatrix(text: String): BitMatrix? = runCatching {
     )
 }.getOrNull()
 
+/** Dark modules on a white card with a generous quiet zone, so any phone camera reads it. */
+@Composable
+fun QrCode(text: String, size: Dp = 196.dp) {
+    val matrix = remember(text) { qrMatrix(text) }
+    Box(
+        Modifier.clip(RoundedCornerShape(14.dp)).background(Color.White).padding(14.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        if (matrix != null) {
+            Canvas(Modifier.size(size)) {
+                val n = matrix.width
+                val cell = this.size.minDimension / n
+                for (y in 0 until n) for (x in 0 until n) {
+                    if (matrix[x, y]) {
+                        // Slight overlap avoids hairline seams between modules.
+                        drawRect(Color(0xFF0E1116), Offset(x * cell, y * cell), Size(cell + 0.6f, cell + 0.6f))
+                    }
+                }
+            }
+        } else {
+            Txt("QR unavailable", color = Color.Black)
+        }
+    }
+}
+
 /**
  * Pop-up shown in the middle of the screen when Web Admin is turned on: a QR code for the
  * phone's camera, with the address and PIN underneath for typing it by hand.
  */
 @Composable
 fun WebAdminQrDialog(url: String, pin: String, onClose: () -> Unit, onTurnOff: () -> Unit) {
-    val matrix = remember(url) { qrMatrix(url) }
     val first = remember { FocusRequester() }
     ZenDialog("Web Admin", onClose, width = 620.dp, initialFocus = first, scrollable = false) {
         Column(Modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
             Note("Scan with your phone's camera", color = Zen.TextDim)
             Spacer(Modifier.height(10.dp))
-            // Dark modules on a white card with a generous quiet zone, so any phone camera reads it.
-            Box(
-                Modifier.clip(RoundedCornerShape(14.dp)).background(Color.White).padding(14.dp),
-                contentAlignment = Alignment.Center,
-            ) {
-                if (matrix != null) {
-                    Canvas(Modifier.size(196.dp)) {
-                        val n = matrix.width
-                        val cell = size.minDimension / n
-                        for (y in 0 until n) for (x in 0 until n) {
-                            if (matrix[x, y]) {
-                                // Slight overlap avoids hairline seams between modules.
-                                drawRect(Color(0xFF0E1116), Offset(x * cell, y * cell), Size(cell + 0.6f, cell + 0.6f))
-                            }
-                        }
-                    }
-                } else {
-                    Txt("QR unavailable", color = Color.Black)
-                }
-            }
+            QrCode(url)
             Spacer(Modifier.height(12.dp))
             Txt(url, size = 22.sp, color = Zen.Accent, align = TextAlign.Center)
             Spacer(Modifier.height(4.dp))

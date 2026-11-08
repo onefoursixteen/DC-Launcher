@@ -52,3 +52,21 @@ internal fun httpDownload(url: String, dest: File, maxBytes: Long) {
         conn.disconnect()
     }
 }
+
+/** A request with an optional JSON body (TMDB account calls). Throws [HttpStatusException] on non-2xx. */
+internal fun httpSend(method: String, url: String, headers: Map<String, String> = emptyMap(), json: String? = null): String {
+    val conn = open(url)
+    conn.requestMethod = method
+    headers.forEach { (k, v) -> conn.setRequestProperty(k, v) }
+    try {
+        if (json != null) {
+            conn.doOutput = true
+            conn.setRequestProperty("Content-Type", "application/json;charset=utf-8")
+            conn.outputStream.use { it.write(json.toByteArray()) }
+        }
+        if (conn.responseCode !in 200..299) throw HttpStatusException(conn.responseCode)
+        return conn.inputStream.bufferedReader().use { it.readText() }
+    } finally {
+        conn.disconnect()
+    }
+}
