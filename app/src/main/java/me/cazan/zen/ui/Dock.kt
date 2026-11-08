@@ -10,6 +10,8 @@ import androidx.compose.foundation.focusable
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.BlendMode
@@ -71,7 +73,7 @@ private fun Modifier.fadeEdges(): Modifier = this
     }
 
 /**
- * The "Dock" home layout: one row of white app logos on a frosted-glass panel. LEFT/RIGHT
+ * The "Dock" home layout: one row of app banners on a frosted-glass panel. LEFT/RIGHT
  * moves along the row (scrolling if there are more apps than fit), OK opens, hold OK or MENU
  * shows the app options, and in move mode LEFT/RIGHT reorders.
  */
@@ -156,10 +158,10 @@ private fun DockItem(
     var focused by remember { mutableStateOf(false) }
     val lit = focused || moving
     val scale by animateFloatAsState(if (lit) 1.08f else 1f, tween(140), label = "dockScale")
-    val logoAlpha by animateFloatAsState(if (lit) 1f else 0.82f, tween(140), label = "dockAlpha")
+    val logoAlpha by animateFloatAsState(if (lit) 1f else 0.9f, tween(140), label = "dockAlpha")
 
-    var logo by remember(entry.key) { mutableStateOf(repo.cachedMono(entry.key)) }
-    LaunchedEffect(entry.key) { if (logo == null) logo = repo.mono(entry) }
+    var art by remember(entry.key) { mutableStateOf(repo.cachedArt(entry.key)) }
+    LaunchedEffect(entry.key) { if (art == null) art = repo.art(entry) }
     LaunchedEffect(wantsFocus) {
         if (wantsFocus) { runCatching { focusRequester.requestFocus() }; onFocusTaken() }
     }
@@ -222,19 +224,24 @@ private fun DockItem(
                     else -> Color.Transparent
                 }
             )
-            .padding(vertical = 12.dp, horizontal = 12.dp),
+            .padding(vertical = 10.dp, horizontal = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Box(Modifier.fillMaxWidth().height(40.dp), contentAlignment = Alignment.Center) {
-            val l = logo
-            if (l != null) {
-                Image(
-                    l, entry.label,
-                    Modifier.fillMaxWidth(0.66f).height(34.dp).graphicsLayer { alpha = logoAlpha },
-                    contentScale = ContentScale.Fit,
-                )
-            } else {
-                Txt(entry.label, size = 20.sp, weight = FontWeight.Medium, color = Zen.Text, align = TextAlign.Center)
+        // The app's own banner in full colour; phone-style apps show their icon on a tinted card.
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .aspectRatio(16f / 9f)
+                .clip(RoundedCornerShape(12.dp))
+                .background(Color(0x33000000))
+                .graphicsLayer { alpha = logoAlpha },
+            contentAlignment = Alignment.Center,
+        ) {
+            val a = art
+            when {
+                a == null -> Txt(entry.label, size = 16.sp, weight = FontWeight.Medium, color = Zen.Text, align = TextAlign.Center)
+                a.isBanner -> Image(a.bitmap, entry.label, Modifier.matchParentSize(), contentScale = ContentScale.Crop)
+                else -> Image(a.bitmap, entry.label, Modifier.fillMaxHeight(0.6f).aspectRatio(1f))
             }
         }
         Txt(

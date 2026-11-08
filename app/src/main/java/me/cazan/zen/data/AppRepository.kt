@@ -12,7 +12,6 @@ import android.graphics.drawable.BitmapDrawable
 import android.graphics.drawable.Drawable
 import android.util.LruCache
 import androidx.compose.ui.graphics.ImageBitmap
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.asImageBitmap
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -87,58 +86,6 @@ class AppRepository(private val context: Context) {
 
     fun cachedArt(key: String): AppArt? = artCache.get(key)
 
-    private val monoCache = object : LruCache<String, ImageBitmap>(4 * 1024 * 1024) {
-        override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 4
-    }
-
-    fun cachedMono(key: String): ImageBitmap? = monoCache.get(key)
-
-    /**
-     * A white-on-transparent version of the app's logo for the Dock layout. Banners have a solid
-     * background, so every pixel close to the background colour (sampled from the corners)
-     * becomes transparent and the rest becomes white, keeping anti-aliased edges soft. Icons
-     * already have transparency, so their alpha is used directly. The result is cropped to the
-     * logo itself so all logos line up at the same height.
-     */
-    suspend fun mono(entry: AppEntry): ImageBitmap? {
-        monoCache.get(entry.key)?.let { return it }
-        val art = art(entry) ?: return null
-        return withContext(Dispatchers.Default) {
-            runCatching { whiten(art.bitmap.asAndroidBitmap(), art.isBanner) }.getOrNull()
-                ?.asImageBitmap()?.also { monoCache.put(entry.key, it) }
-        }
-    }
-
-    private fun whiten(src: Bitmap, isBanner: Boolean): Bitmap? {
-        val w = src.width; val h = src.height
-        val px = IntArray(w * h); src.copy(Bitmap.Config.ARGB_8888, false).getPixels(px, 0, w, 0, 0, w, h)
-        fun ch(c: Int, s: Int) = (c shr s) and 0xFF
-        // Background = average of the four corner patches.
-        var br = 0; var bg = 0; var bb = 0; var n = 0
-        if (isBanner) for ((cx, cy) in listOf(2 to 2, w - 6 to 2, 2 to h - 6, w - 6 to h - 6)) {
-            for (y in cy until cy + 4) for (x in cx until cx + 4) {
-                val c = px[y * w + x]; br += ch(c, 16); bg += ch(c, 8); bb += ch(c, 0); n++
-            }
-        }
-        if (n > 0) { br /= n; bg /= n; bb /= n }
-        var minX = w; var minY = h; var maxX = -1; var maxY = -1
-        val out = IntArray(w * h)
-        for (i in px.indices) {
-            val c = px[i]
-            val srcA = ch(c, 24)
-            val a = if (isBanner) {
-                val d = maxOf(kotlin.math.abs(ch(c, 16) - br), kotlin.math.abs(ch(c, 8) - bg), kotlin.math.abs(ch(c, 0) - bb))
-                ((d - 28) * 3).coerceIn(0, 255) * srcA / 255
-            } else srcA
-            if (a > 0) {
-                out[i] = (a shl 24) or 0xFFFFFF
-                if (a > 60) { val x = i % w; val y = i / w; if (x < minX) minX = x; if (x > maxX) maxX = x; if (y < minY) minY = y; if (y > maxY) maxY = y }
-            }
-        }
-        if (maxX < 0) return null
-        val full = Bitmap.createBitmap(out, w, h, Bitmap.Config.ARGB_8888)
-        return Bitmap.createBitmap(full, minX, minY, maxX - minX + 1, maxY - minY + 1).also { it.prepareToDraw() }
-    }
 
     suspend fun art(entry: AppEntry): AppArt? {
         artCache.get(entry.key)?.let { return it }
@@ -177,7 +124,7 @@ class AppRepository(private val context: Context) {
     @Suppress("DEPRECATION")
     fun trimMemory(level: Int) {
         when {
-            level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE -> { artCache.evictAll(); monoCache.evictAll() }
+            level >= ComponentCallbacks2.TRIM_MEMORY_MODERATE -> artCache.evictAll()
             level >= ComponentCallbacks2.TRIM_MEMORY_BACKGROUND ||
                 level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_LOW ||
                 level == ComponentCallbacks2.TRIM_MEMORY_RUNNING_CRITICAL ->
