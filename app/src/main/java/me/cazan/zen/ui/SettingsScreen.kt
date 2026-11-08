@@ -88,6 +88,7 @@ private enum class Section(val title: String) {
     HIDDEN("Hidden apps"),
     CATEGORIES("Categories"),
     REMOTE("Remote buttons"),
+    WEB_ADMIN("Web Admin"),
     ABOUT("About"),
 }
 
@@ -136,6 +137,7 @@ fun SettingsScreen(app: ZenApp, isDefaultHome: Boolean, actions: SettingsActions
                 Section.HIDDEN -> HiddenAppsSection(app, config)
                 Section.CATEGORIES -> CategoriesSection(app, config)
                 Section.REMOTE -> RemoteSection(app, config)
+                Section.WEB_ADMIN -> WebAdminSection(app)
                 Section.ABOUT -> AboutSection(actions)
             }
         }
@@ -363,44 +365,25 @@ private fun InfoRow(label: String, value: String) {
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun SpotlightSection(app: ZenApp, config: Config) {
-    val admin by app.admin.status.collectAsState()
     val status by app.spotlight.status.collectAsState()
     val scope = rememberCoroutineScope()
-    val pinBlock = remember { BringIntoViewRequester() }
     val place = config.place
     val region = place?.countryCode
 
     LaunchedEffect(place?.name) { app.ensureRegion() }
-    LaunchedEffect(admin.running) { if (admin.running) runCatching { pinBlock.bringIntoView() } }
 
     ScrollPage {
         SectionTitle("Spotlight")
         Note("This week's new movies and series, with their artwork, at the top of the home screen. " +
-            "Add titles to your watchlist from the spotlight, or search on the web admin page.")
+            "Add titles to your watchlist from the spotlight, or search in Web Admin.")
         ToggleRow(
             "Show spotlight", config.spotlight, { app.prefs.update { it.copy(spotlight = !it.spotlight) } },
-            detail = if (config.tmdbKey == null) "Needs a TMDB key: add it with the web admin page" else null,
+            detail = if (config.tmdbKey == null) "Needs a TMDB key: add it in Web Admin" else null,
         )
         ToggleRow(
             "Only show titles on my apps", config.onlyMine, { app.prefs.update { it.copy(onlyMine = !it.onlyMine) } },
             detail = "Hide titles that aren't streaming on an app installed on this TV",
         )
-        ToggleRow(
-            "Web admin page", admin.running, { if (admin.running) app.admin.stop() else app.admin.start() },
-            detail = "Type the TMDB key on your phone or computer instead of with the remote",
-        )
-        if (admin.running) {
-            Column(Modifier.bringIntoViewRequester(pinBlock).padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Note("On a phone or computer on the same network, open:")
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(20.dp)) {
-                    CodeLine(admin.url.orEmpty())
-                    Txt("PIN", size = 18.sp, color = Zen.TextDim)
-                    Txt(admin.pin.orEmpty().chunked(3).joinToString(" "), size = 34.sp, weight = FontWeight.Medium)
-                }
-                Note("Turns itself off when you leave Settings, after 15 minutes, or after 5 wrong PINs.", color = Zen.TextFaint)
-            }
-        }
-        if (admin.event.isNotEmpty()) Note(admin.event, Modifier.padding(horizontal = 18.dp), color = Zen.Accent)
 
         InfoRow("TMDB key", config.tmdbKey?.let { "Saved  ••••${it.takeLast(4)}" } ?: "Not set")
         InfoRow("Watchlist", config.watchlist.size.let { if (it == 1) "1 title" else "$it titles" })
@@ -427,6 +410,49 @@ private fun SpotlightSection(app: ZenApp, config: Config) {
             }
         }
         Note("This product uses the TMDB API but is not endorsed or certified by TMDB.", color = Zen.TextFaint)
+    }
+}
+
+// ---------------------------------------------------------------- Web Admin
+
+@Composable
+private fun WebAdminSection(app: ZenApp) {
+    val admin by app.admin.status.collectAsState()
+    var showQr by remember { mutableStateOf(false) }
+    // Turning it on pops the QR code up straight away.
+    var wasRunning by remember { mutableStateOf(admin.running) }
+    LaunchedEffect(admin.running) {
+        if (admin.running && !wasRunning) showQr = true
+        if (!admin.running) showQr = false
+        wasRunning = admin.running
+    }
+
+    ScrollPage {
+        SectionTitle("Web Admin")
+        Note("Manage DC Launcher from your phone or computer: the TMDB key, watchlist search, " +
+            "spotlight options and the background picture.")
+        ToggleRow(
+            "Web admin page", admin.running, { if (admin.running) app.admin.stop() else app.admin.start() },
+            detail = if (admin.running) "On · turns off when you leave Settings, after 15 minutes, or after 5 wrong PINs"
+            else "Off",
+        )
+        if (admin.running) {
+            ZenListItem("Show QR code", { showQr = true }, detail = admin.url)
+            Row(Modifier.padding(horizontal = 18.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                Txt("PIN", size = 18.sp, color = Zen.TextDim)
+                Txt(admin.pin.orEmpty().chunked(3).joinToString(" "), size = 30.sp, weight = FontWeight.Medium)
+            }
+        }
+        if (admin.event.isNotEmpty()) Note(admin.event, Modifier.padding(horizontal = 18.dp), color = Zen.Accent)
+    }
+
+    if (showQr && admin.running) {
+        WebAdminQrDialog(
+            url = admin.url.orEmpty(),
+            pin = admin.pin.orEmpty(),
+            onClose = { showQr = false },
+            onTurnOff = { showQr = false; app.admin.stop() },
+        )
     }
 }
 

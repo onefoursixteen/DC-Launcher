@@ -77,4 +77,6 @@ dependencies {
     implementation("androidx.compose.foundation:foundation:1.11.4")
     implementation("androidx.compose.ui:ui:1.11.4")
     implementation("androidx.core:core-ktx:1.18.0")
+    // QR code for the Web Admin pop-up (encoder only; R8 strips the rest).
+    implementation("com.google.zxing:core:3.5.3")
 }

@@ -36,7 +36,10 @@ class AdminServer(
 ) {
     data class State(val running: Boolean = false, val url: String? = null, val pin: String? = null, val event: String = "")
 
-    private class Request(val method: String, val path: String, val query: Map<String, String>, val cookies: Map<String, String>, val form: Map<String, String>)
+    private class Request(
+        val method: String, val path: String, val query: Map<String, String>, val cookies: Map<String, String>,
+        val form: Map<String, String>, val contentType: String = "", val raw: ByteArray? = null,
+    )
     private class Response(val code: Int, val body: String = "", val headers: List<String> = emptyList())
 
     private val state = MutableStateFlow(State())
@@ -98,6 +101,12 @@ class AdminServer(
             req.method == "GET" && req.path == "/" -> Response(200, mainPage(req.query["m"], req.query["e"] == "1", null, null))
             req.method == "GET" && req.path == "/search" -> search(req.query["q"].orEmpty(), req.query["m"])
             req.method == "POST" && req.path == "/settings" -> saveSettings(req.form)
+            req.method == "POST" && req.path == "/wallpaper" -> uploadWallpaper(req)
+            req.method == "POST" && req.path == "/wallpaper/reset" -> {
+                prefs.update { it.copy(wallpaper = Wallpaper.Gradient(0)) }
+                event("Background reset from the web page")
+                redirect("/?m=" + enc("Background reset to the default gradient.") + "#background")
+            }
             req.method == "POST" && req.path == "/watch/add" -> addWatch(req.form)
             req.method == "POST" && req.path == "/watch/remove" -> removeWatch(req.form)
             req.method == "POST" && req.path == "/interest/reset" -> {
@@ -182,6 +191,51 @@ class AdminServer(
         return redirect("/?m=" + enc("Removed “${title ?: "title"}”.") + "#watchlist")
     }
 
+    /** Saves an uploaded picture (multipart/form-data, field "picture") as the TV's background. */
+    private fun uploadWallpaper(req: Request): Response {
+        val bad = { msg: String -> redirect("/?e=1&m=" + enc(msg) + "#background") }
+        val raw = req.raw ?: return bad("That picture is too big (max ${MAX_UPLOAD / 1024 / 1024} MB) or the upload failed.")
+        val boundary = req.contentType.substringAfter("boundary=", "").trim().trim('"')
+        if (boundary.isEmpty()) return bad("The upload wasn't understood. Try again.")
+        val data = filePart(raw, boundary) ?: return bad("Choose a picture first.")
+        val bounds = android.graphics.BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        android.graphics.BitmapFactory.decodeByteArray(data, 0, data.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) return bad("That file isn't a picture the TV can show (use JPG, PNG or WebP).")
+        val dir = java.io.File(context.filesDir, "wallpapers").apply { mkdirs() }
+        dir.listFiles()?.filter { it.name.startsWith("upload_") }?.forEach { it.delete() }
+        val file = java.io.File(dir, "upload_${System.currentTimeMillis()}")
+        file.writeBytes(data)
+        prefs.update { it.copy(wallpaper = Wallpaper.Image(file.absolutePath)) }
+        event("New background uploaded from the web page")
+        return redirect("/?m=" + enc("Background updated (${bounds.outWidth}×${bounds.outHeight}).") + "#background")
+    }
+
+    /** Bytes of the first file in a multipart body, or null if there's no (non-empty) file. */
+    private fun filePart(body: ByteArray, boundary: String): ByteArray? {
+        val delim = ("--$boundary").toByteArray(Charsets.ISO_8859_1)
+        val crlf2 = "\r\n\r\n".toByteArray(Charsets.ISO_8859_1)
+        var pos = indexOf(body, delim, 0)
+        while (pos >= 0) {
+            val headStart = pos + delim.size
+            val headEnd = indexOf(body, crlf2, headStart).takeIf { it >= 0 } ?: return null
+            val headers = String(body, headStart, headEnd - headStart, Charsets.ISO_8859_1)
+            val dataStart = headEnd + crlf2.size
+            val next = indexOf(body, ("\r\n--$boundary").toByteArray(Charsets.ISO_8859_1), dataStart)
+            if (next < 0) return null
+            if ("filename=" in headers && next > dataStart) return body.copyOfRange(dataStart, next)
+            pos = next + 2
+        }
+        return null
+    }
+
+    private fun indexOf(hay: ByteArray, needle: ByteArray, from: Int): Int {
+        outer@ for (i in from..hay.size - needle.size) {
+            for (j in needle.indices) if (hay[i + j] != needle[j]) continue@outer
+            return i
+        }
+        return -1
+    }
+
     private fun redirect(to: String, vararg extra: String) = Response(303, "", listOf("Location: $to") + extra)
 
     // ---------------------------------------------------------------- HTML
@@ -233,6 +287,17 @@ $banner
 
 <h2 id="watchlist">Watchlist</h2>$watchHtml
 
+<h2 id="background">Background</h2>
+<p>${esc(when (val w = c.wallpaper) {
+    is Wallpaper.Image -> "Currently a picture."
+    is Wallpaper.Gradient -> "Currently a gradient."
+    is Wallpaper.Solid -> "Currently a solid colour."
+})} Pick a photo from your phone or computer; it appears on the TV right away.</p>
+<form method="post" action="/wallpaper" enctype="multipart/form-data" class="inline">
+<input type="file" name="picture" accept="image/jpeg,image/png,image/webp,image/*" required>
+<button class="primary">Upload</button></form>
+${if (c.wallpaper is Wallpaper.Image) """<form method="post" action="/wallpaper/reset" class="inline" style="margin-top:10px"><button class="small ghost">Back to the default gradient</button></form>""" else ""}
+
 <h2>Spotlight</h2>
 <form method="post" action="/settings" autocomplete="off">
 <label for="key">TMDB API key or Read Access Token</label>
@@ -259,7 +324,7 @@ ${if (c.notInterested.isNotEmpty()) """<form method="post" action="/interest/res
 main{max-width:620px;margin:16px auto;background:var(--panel);border-radius:16px;padding:24px}
 h1{font-weight:400;margin:0 0 4px}h2{font-size:18px;margin:28px 0 10px;padding-top:16px;border-top:1px solid var(--line)}
 p{color:var(--dim);margin:6px 0 14px}label{display:block;margin:14px 0 6px;font-weight:600}
-input[type=text],input[type=password]{width:100%;padding:12px;border-radius:10px;border:1px solid #333a46;background:#0b0e13;color:var(--text);font-size:16px}
+input[type=file]{color:var(--dim);max-width:100%}input[type=text],input[type=password]{width:100%;padding:12px;border-radius:10px;border:1px solid #333a46;background:#0b0e13;color:var(--text);font-size:16px}
 .row{display:flex;gap:10px;align-items:center;margin-top:14px}.row label{margin:0;font-weight:400}
 .inline{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.inline input{flex:1;min-width:0;width:auto}.inline span{color:var(--dim)}
 button{margin-top:16px;padding:12px 20px;border:0;border-radius:999px;font-size:16px;font-weight:600;cursor:pointer}
@@ -288,10 +353,17 @@ $body
             l.indexOf(':').takeIf { it > 0 }?.let { l.substring(0, it).trim().lowercase() to l.substring(it + 1).trim() }
         }.toMap()
         val length = headers["content-length"]?.toIntOrNull() ?: 0
-        if (length !in 0..MAX_BODY) return null
         val cookies = headers["cookie"].orEmpty().split(';').mapNotNull { c ->
             c.indexOf('=').takeIf { it > 0 }?.let { c.substring(0, it).trim() to c.substring(it + 1).trim() }
         }.toMap()
+        val path = target.substringBefore('?')
+        if (parts[0] == "POST" && path == "/wallpaper") {
+            // Picture upload: only signed-in sessions may send a large body; others aren't read at all.
+            val signedIn = cookies["zen"]?.let { it in sessions } == true
+            val raw = if (signedIn && length in 1..MAX_UPLOAD) readBytes(input, length) else null
+            return Request(parts[0], path, emptyMap(), cookies, emptyMap(), headers["content-type"].orEmpty(), raw)
+        }
+        if (length !in 0..MAX_BODY) return null
         return Request(
             method = parts[0],
             path = target.substringBefore('?'),
@@ -313,6 +385,17 @@ $body
             if (matched == 4) return buf.toString("ISO-8859-1").removeSuffix(end)
         }
         return null
+    }
+
+    private fun readBytes(input: InputStream, length: Int): ByteArray {
+        val bytes = ByteArray(length)
+        var read = 0
+        while (read < length) {
+            val n = input.read(bytes, read, length - read)
+            if (n < 0) break
+            read += n
+        }
+        return if (read == length) bytes else bytes.copyOf(read)
     }
 
     private fun readBody(input: InputStream, length: Int): String {
@@ -347,6 +430,7 @@ $body
         const val PORT = 8321
         const val MAX_HEAD = 16 * 1024
         const val MAX_BODY = 8 * 1024
+        const val MAX_UPLOAD = 20 * 1024 * 1024
         const val MAX_FAILURES = 5
     }
 }
