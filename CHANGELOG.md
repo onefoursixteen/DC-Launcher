@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.1.0 — 2026-11-08
+
+### New
+- **Dock layout** (Settings → Appearance → Home layout): your apps in one frosted-glass row
+  with their own logos and names. Up to six apps fill the row; more scroll, with soft faded
+  edges. The panel, focus highlight and logos share the same rounded corners.
+- **Web Admin** has its own settings menu item. Switching it on shows a QR code in the middle
+  of the screen, with the address and PIN underneath; scan it with your phone's camera.
+- **Upload a background from your phone or computer** on the web page (JPG, PNG or WebP, up
+  to 20 MB). It appears on the TV straight away, and you can go back to the default gradient.
+
+### Fixed
+- The first app is now always highlighted when the home screen opens, and Home brings the
+  dock back to its first app.
+- The app list is refreshed every time the home screen appears, so apps can't go missing
+  after a restart.
+
+### Install
+Updates v1.0.0 in place and keeps your settings: install `dc-launcher-v1.1.0.apk` over it.
+
 ## v1.0.0 — 2026-10-30
 
 First release of **DC Launcher**: a lightweight, ad-free home screen for Android TV and
