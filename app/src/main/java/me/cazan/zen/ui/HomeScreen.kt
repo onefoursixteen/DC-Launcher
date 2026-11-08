@@ -29,6 +29,7 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -85,6 +86,8 @@ class HomeActions(
     val openSettings: () -> Unit,
     val openSystemSettings: () -> Unit,
     val openSettingsPage: (action: String) -> Unit,
+    /** Plays a YouTube video by its key. */
+    val playTrailer: (youtubeKey: String) -> Unit,
     val appInfo: (AppEntry) -> Unit,
     val uninstall: (AppEntry) -> Unit,
 )
@@ -406,6 +409,9 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
 
         spotDetails?.let { item ->
             val watched = config.watchlist.firstOrNull { it.key == item.key }
+            val trailer by produceState<String?>(null, item.key, config.tmdbKey) {
+                value = config.tmdbKey?.let { app.spotlight.trailer(it, item.type, item.id) }
+            }
             SpotlightDialog(
                 item = item,
                 installed = allApps,
@@ -420,6 +426,7 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                     spotDetails = null
                     prefs.notInterested(item.key)
                 }),
+                onTrailer = trailer?.let { t -> { actions.playTrailer(t) } },
                 status = watched?.let { w ->
                     listOfNotNull(watchLabel(w, watchStatus[w.key], allApps).text, watchDetail(w, watchStatus[w.key]))
                         .distinct().joinToString("\n")

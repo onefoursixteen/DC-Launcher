@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### New
+- **Watch trailer** in the details of spotlight and watchlist titles: plays the official
+  trailer (in the TV's language when there is one) in the YouTube app, or in any app that
+  opens YouTube links, such as SmartTube.
+
 ## v1.2.0 — 2026-11-08
 
 ### New

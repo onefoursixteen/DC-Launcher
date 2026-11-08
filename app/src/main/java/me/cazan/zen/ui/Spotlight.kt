@@ -199,6 +199,8 @@ fun SpotlightDialog(
     onNotInterested: (() -> Unit)? = null,
     /** Today's watchlist status, e.g. "New episode Thursday · Netflix". */
     status: String? = null,
+    /** Shown once TMDB has a trailer for this title. */
+    onTrailer: (() -> Unit)? = null,
 ) {
     val first = remember { FocusRequester() }
     val onApps = remember(item, installed) { providerApps(item.providers, installed) }
@@ -230,6 +232,7 @@ fun SpotlightDialog(
             )
         }
         val firstIfNoApp = if (onApps.isEmpty()) Modifier.focusRequester(first) else Modifier
+        if (onTrailer != null) ZenListItem("Watch trailer", onTrailer, detail = "Plays on YouTube")
         if (inWatchlist) {
             // Already saved: Close comes before Remove, so a habitual double-OK can't delete it.
             ZenListItem("Close", onDismiss, firstIfNoApp)

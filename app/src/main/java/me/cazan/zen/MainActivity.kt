@@ -69,6 +69,7 @@ class MainActivity : ComponentActivity() {
                     openSettings = ::openSettings,
                     openSystemSettings = { safeStart(Intent(Settings.ACTION_SETTINGS)) },
                     openSettingsPage = { action -> safeStart(Intent(action)) },
+                    playTrailer = ::playTrailer,
                     appInfo = { e ->
                         safeStart(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, "package:${e.packageName}".toUri()))
                     },
@@ -206,6 +207,22 @@ class MainActivity : ComponentActivity() {
             return true
         }
         return super.onKeyUp(keyCode, event)
+    }
+
+    /** YouTube's TV app if it's there, otherwise whatever handles YouTube links (e.g. SmartTube). */
+    private fun playTrailer(youtubeKey: String) {
+        val youtubeTv = Intent(Intent.ACTION_VIEW, "vnd.youtube:$youtubeKey".toUri())
+            .setPackage("com.google.android.youtube.tv")
+        val anyApp = Intent(Intent.ACTION_VIEW, "https://www.youtube.com/watch?v=$youtubeKey".toUri())
+        for (intent in listOf(youtubeTv, anyApp)) {
+            try {
+                startActivity(intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                return
+            } catch (_: ActivityNotFoundException) {
+            } catch (_: SecurityException) {
+            }
+        }
+        toast("Install YouTube to watch trailers")
     }
 
     private fun launch(entry: AppEntry) {

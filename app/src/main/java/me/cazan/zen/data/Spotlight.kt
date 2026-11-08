@@ -54,6 +54,8 @@ class SpotlightRepository(private val context: Context) {
     private var fetchedAt = 0L
     private var fetchedFor = ""
     private var loadedFromDisk = false
+    /** YouTube key of each title's trailer ("" = none), fetched only when its details are opened. */
+    private val trailers = java.util.concurrent.ConcurrentHashMap<String, String>()
 
     private val bitmaps = object : LruCache<String, ImageBitmap>(14 * 1024 * 1024) {
         override fun sizeOf(key: String, value: ImageBitmap) = value.width * value.height * 2
@@ -214,6 +216,32 @@ class SpotlightRepository(private val context: Context) {
         }
         val text = if (method == "GET" && body == null) httpGetText(url, headers) else httpSend(method, url, headers, body?.toString())
         return JSONObject(text)
+    }
+
+    /**
+     * The YouTube key of the best trailer: in the TV's language if there is one, otherwise
+     * English; official over fan uploads; a trailer over a teaser; the newest of equals.
+     */
+    suspend fun trailer(key: String, type: String, id: Int): String? = withContext(Dispatchers.IO) {
+        val cacheKey = "$type:$id"
+        trailers[cacheKey]?.let { return@withContext it.ifEmpty { null } }
+        val lang = Locale.getDefault().language.ifEmpty { "en" }
+        val videos = runCatching {
+            val arr = tmdbJson(key, "/$type/$id/videos?language=$lang&include_video_language=$lang,en,null")
+                .getJSONArray("results")
+            (0 until arr.length()).map { arr.getJSONObject(it) }
+        }.getOrElse { return@withContext null } // offline: try again next time
+        val best = videos
+            .filter { it.optString("site") == "YouTube" && it.optString("type") in setOf("Trailer", "Teaser") }
+            .sortedWith(
+                compareByDescending<JSONObject> { it.optString("iso_639_1") == lang }
+                    .thenByDescending { it.optBoolean("official") }
+                    .thenByDescending { it.optString("type") == "Trailer" }
+                    .thenByDescending { it.optString("published_at") },
+            )
+            .firstOrNull()?.optString("key")?.ifEmpty { null }
+        trailers[cacheKey] = best.orEmpty()
+        best
     }
 
     /** Returns null when the key works, otherwise a human-readable reason. */
