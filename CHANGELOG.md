@@ -1,5 +1,25 @@
 # Changelog
 
+## v1.4.1 — 2026-11-22
+
+### Changed
+- **Seerr behind a VPN.** Web Admin now only *saves* the Seerr address and your Jellyfin login,
+  so it works with the VPN off. Turn the VPN on and press **Connect** in the new
+  **Settings → Seerr** page. The password is stored encrypted with a key held in the TV's
+  Android Keystore and is never shown on the web page.
+- When Seerr ends the session, the TV signs in again by itself the next time Seerr is reachable.
+- With Seerr out of reach, search and requests say "Can't reach Seerr. Is the VPN on?".
+
+### Fixed
+- The Settings menu scrolls, so Web Admin and About are no longer cut off at the bottom.
+
+### Note
+If you set up Seerr in v1.4.0, enter the Jellyfin password once more in Web Admin so the TV can
+sign in again later.
+
+### Install
+Updates any earlier version in place and keeps your settings: install `dc-launcher-v1.4.1.apk` over it.
+
 ## v1.4.0 — 2026-11-22
 
 ### New

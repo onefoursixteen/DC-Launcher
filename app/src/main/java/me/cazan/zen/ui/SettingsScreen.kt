@@ -86,6 +86,7 @@ private enum class Section(val title: String) {
     HIDDEN("Hidden apps"),
     CATEGORIES("Categories"),
     REMOTE("Remote buttons"),
+    SEERR("Seerr"),
     WEB_ADMIN("Web Admin"),
     ABOUT("About"),
 }
@@ -112,6 +113,9 @@ fun SettingsScreen(app: ZenApp, isDefaultHome: Boolean, actions: SettingsActions
             Modifier
                 .width(250.dp)
                 .fillMaxHeight()
+                // Scrolls so the focused entry is always on screen when the list is taller than the TV.
+                .verticalScroll(rememberScrollState())
+                // Coming back with LEFT lands on the entry whose page is open.
                 .focusRestorer()
                 .focusGroup(),
             verticalArrangement = Arrangement.spacedBy(4.dp),
@@ -135,6 +139,7 @@ fun SettingsScreen(app: ZenApp, isDefaultHome: Boolean, actions: SettingsActions
                 Section.HIDDEN -> HiddenAppsSection(app, config)
                 Section.CATEGORIES -> CategoriesSection(app, config)
                 Section.REMOTE -> RemoteSection(app, config)
+                Section.SEERR -> SeerrSection(app, config)
                 Section.WEB_ADMIN -> WebAdminSection(app)
                 Section.ABOUT -> AboutSection(actions)
             }
@@ -444,6 +449,49 @@ private fun SpotlightSection(app: ZenApp, config: Config) {
     }
 }
 
+// ---------------------------------------------------------------- Seerr
+
+@Composable
+private fun SeerrSection(app: ZenApp, config: Config) {
+    val status by app.seerr.status.collectAsState()
+    val scope = rememberCoroutineScope()
+    var busy by remember { mutableStateOf(false) }
+    ScrollPage {
+        SectionTitle("Seerr")
+        Note("Search and request movies and series as your Jellyfin user. Enter the Seerr address and " +
+            "your Jellyfin login in Web Admin (that works with the VPN off). Then, with the VPN on if " +
+            "you need it to reach Seerr, press Connect here.")
+        val s = config.seerr
+        if (s == null) {
+            InfoRow("Status", "Not set up")
+            Note("Open Web Admin and fill in the Seerr part.", Modifier.padding(horizontal = 18.dp), color = Zen.TextFaint)
+        } else {
+            InfoRow("Server", s.url)
+            InfoRow("Jellyfin user", s.username.ifEmpty { "Not saved · enter it in Web Admin" })
+            InfoRow(
+                "Status",
+                when {
+                    busy -> "Connecting…"
+                    status.isNotEmpty() -> status
+                    s.cookie != null -> "Connected as ${s.name}"
+                    else -> "Not connected yet"
+                },
+            )
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+                ZenButton(if (s.cookie == null) "Connect" else "Reconnect", {
+                    if (!busy) {
+                        busy = true
+                        scope.launch { app.seerr.connect(); busy = false }
+                    }
+                })
+                ZenButton("Remove Seerr", { app.seerr.forget() })
+            }
+            Note("When Seerr ends the session, the TV signs in again by itself the next time Seerr is reachable.",
+                Modifier.padding(horizontal = 18.dp), color = Zen.TextFaint)
+        }
+    }
+}
+
 // ---------------------------------------------------------------- Web Admin
 
 @Composable
@@ -688,7 +736,7 @@ private fun AboutSection(actions: SettingsActions) {
     ScrollPage {
         SectionTitle("DC Launcher ${actions.versionName}")
         Note("No ads. No recommendations. No analytics, crash reporting or tracking of any kind.")
-        Note("The network is only used for things you set up yourself: the weather, TMDB (spotlight, watchlist and account sync) and URL wallpapers.")
+        Note("The network is only used for things you set up yourself: the weather, TMDB (spotlight, watchlist and account sync), your Seerr server and URL wallpapers.")
         Note("Memory in use right now: about $memInfo MB.", color = Zen.Accent)
         Spacer(Modifier.height(8.dp))
         Label("Remote shortcuts")

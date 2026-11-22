@@ -109,11 +109,11 @@ class AdminServer(
             }
             req.method == "POST" && req.path == "/watch/add" -> addWatch(req.form)
             req.method == "POST" && req.path == "/watch/remove" -> removeWatch(req.form)
-            req.method == "POST" && req.path == "/seerr/signin" -> seerrSignIn(req.form)
-            req.method == "POST" && req.path == "/seerr/signout" -> {
-                seerr.signOut()
-                event("Signed out of Seerr from the web page")
-                redirect("/?m=" + enc("Signed out of Seerr.") + "#seerr")
+            req.method == "POST" && req.path == "/seerr/save" -> seerrSave(req.form)
+            req.method == "POST" && req.path == "/seerr/forget" -> {
+                seerr.forget()
+                event("Seerr details removed from the web page")
+                redirect("/?m=" + enc("Seerr details removed from the TV.") + "#seerr")
             }
             req.method == "POST" && req.path == "/seerr/request" -> seerrRequest(req.form)
             req.method == "POST" && req.path == "/interest/reset" -> {
@@ -198,15 +198,15 @@ class AdminServer(
         return redirect("/?m=" + enc("Removed “${title ?: "title"}”.") + "#watchlist")
     }
 
-    private fun seerrSignIn(form: Map<String, String>): Response {
+    private fun seerrSave(form: Map<String, String>): Response {
         val url = form["url"].orEmpty()
         val user = form["username"].orEmpty().trim()
-        val pass = form["password"].orEmpty()
         if (url.isBlank() || user.isEmpty()) return redirect("/?e=1&m=" + enc("Enter the Seerr address and your Jellyfin username.") + "#seerr")
-        val problem = runBlocking { seerr.signIn(url, user, pass) }
-        if (problem != null) return redirect("/?e=1&m=" + enc(problem) + "#seerr")
-        event("Signed in to Seerr as $user")
-        return redirect("/?m=" + enc("Signed in to Seerr as $user. Requests from the TV will use this account.") + "#seerr")
+        seerr.saveLogin(url, user, form["password"].orEmpty())?.let { return redirect("/?e=1&m=" + enc(it) + "#seerr") }
+        event("Seerr details saved from the web page")
+        val msg = if (prefs.config.value.seerr?.cookie != null) "Seerr details saved."
+            else "Saved. Turn on the VPN, then press Connect in the TV's Settings → Seerr."
+        return redirect("/?m=" + enc(msg) + "#seerr")
     }
 
     private fun seerrRequest(form: Map<String, String>): Response {
@@ -220,8 +220,8 @@ class AdminServer(
             val t = runBlocking { seerr.request(type, id) }
             event("Requested a title on Seerr from the web page")
             back(if (t.state == SeerrState.AVAILABLE) "It's already in your library." else "Requested. ${t.state.label}", false)
-        } catch (_: SeerrSignedOut) {
-            back("Seerr signed you out. Sign in again below.", true)
+        } catch (e: SeerrNotReady) {
+            back(e.message.orEmpty(), true)
         } catch (e: HttpStatusException) {
             back(if (e.code == 403) "Seerr refused: request limit reached or no permission." else "Seerr returned HTTP ${e.code}.", true)
         } catch (e: Exception) {
@@ -329,14 +329,17 @@ $banner
 <h2 id="watchlist">Watchlist</h2>$watchHtml
 
 <h2 id="seerr">Seerr</h2>
-${c.seerr?.let { s -> """<p>Signed in as <b>${esc(s.name)}</b> at ${esc(s.url)}.${if (seerr.signedOut.value) " <b>Seerr ended the session; sign in again.</b>" else ""} Search and request from the TV's 🔍 button, or with Request in the search above.</p>
-<form method="post" action="/seerr/signout" class="inline"><button class="small ghost">Sign out of Seerr</button></form>""" }.orEmpty()}
-${if (c.seerr == null || seerr.signedOut.value) """<p>Sign in with your <b>Jellyfin</b> account so the TV can search Seerr and request movies and series as you. Your password is sent to Seerr once and not kept on the TV.</p>
-<form method="post" action="/seerr/signin" autocomplete="off">
+<p>Search and request movies and series from the TV with your <b>Jellyfin</b> account. Saving here doesn't contact Seerr,
+so it works with the VPN off; then turn the VPN on and press <b>Connect</b> in the TV's Settings → Seerr.
+The password is stored encrypted on the TV and used only to sign in to Seerr.</p>
+${c.seerr?.let { s -> """<dl><dt>Server</dt><dd>${esc(s.url)}</dd><dt>User</dt><dd>${esc(s.username)}</dd><dt>Status</dt><dd>${esc(
+    seerr.status.value.ifEmpty { if (s.cookie != null) "Connected as ${s.name}" else "Saved · not connected yet" })}</dd></dl>""" }.orEmpty()}
+<form method="post" action="/seerr/save" autocomplete="off">
 <label for="su">Seerr address</label><input id="su" name="url" type="text" placeholder="http://192.168.0.20:5055" value="${esc(c.seerr?.url.orEmpty())}" required>
-<label for="sn">Jellyfin username</label><input id="sn" name="username" type="text" autocapitalize="none" required>
-<label for="sp2">Jellyfin password</label><input id="sp2" name="password" type="password">
-<button class="primary">Sign in</button></form>""" else ""}
+<label for="sn">Jellyfin username</label><input id="sn" name="username" type="text" autocapitalize="none" value="${esc(c.seerr?.username.orEmpty())}" required>
+<label for="sp2">Jellyfin password</label><input id="sp2" name="password" type="password" placeholder="${if (c.seerr != null) "Leave empty to keep the saved password" else ""}">
+<button class="primary">Save</button></form>
+${if (c.seerr != null) """<form method="post" action="/seerr/forget" class="inline" style="margin-top:10px"><button class="small ghost">Remove Seerr from this TV</button></form>""" else ""}
 
 <h2 id="background">Background</h2>
 <p>${esc(when (val w = c.wallpaper) {

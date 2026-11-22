@@ -76,8 +76,20 @@ data class Config(
     val seerr: SeerrAccount? = null,
 )
 
-/** A Seerr session. Only the session cookie is kept, never the Jellyfin password. */
-data class SeerrAccount(val url: String, val cookie: String, val userId: Int, val name: String)
+/**
+ * Seerr sign-in details. Saved from Web Admin (often with the VPN off), then used by the TV to
+ * connect whenever Seerr is reachable. The password is encrypted with a key held in the
+ * Android Keystore; [cookie] is the current Seerr session, null until the first connect.
+ */
+data class SeerrAccount(
+    val url: String,
+    val username: String,
+    val sealedPassword: String,
+    val cookie: String? = null,
+    val userId: Int = 0,
+    /** Display name Seerr reported at the last connect. */
+    val name: String = "",
+)
 
 /** A TMDB user session (v3 session_id) approved by the user on themoviedb.org. */
 data class TmdbAccount(
@@ -187,7 +199,10 @@ class LauncherPrefs(context: Context) {
         seerr = sp.getString(K_SEERR, null)?.let { raw ->
             runCatching {
                 val o = JSONObject(raw)
-                SeerrAccount(o.getString("url"), o.getString("cookie"), o.optInt("user"), o.optString("name"))
+                SeerrAccount(
+                    o.getString("url"), o.optString("username"), o.optString("pass"),
+                    o.optString("cookie").ifEmpty { null }, o.optInt("user"), o.optString("name"),
+                )
             }.getOrNull()
         },
     )
@@ -234,7 +249,8 @@ class LauncherPrefs(context: Context) {
                     .put("synced", JSONArray(a.synced.toList())).put("at", a.syncedAt).toString()
             })
             putString(K_SEERR, c.seerr?.let { s ->
-                JSONObject().put("url", s.url).put("cookie", s.cookie).put("user", s.userId).put("name", s.name).toString()
+                JSONObject().put("url", s.url).put("username", s.username).put("pass", s.sealedPassword)
+                    .putOpt("cookie", s.cookie).put("user", s.userId).put("name", s.name).toString()
             })
         }
     }

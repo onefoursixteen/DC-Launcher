@@ -66,7 +66,8 @@ import me.cazan.zen.data.HomeLayout
 import me.cazan.zen.data.HttpStatusException
 import me.cazan.zen.data.NetState
 import me.cazan.zen.data.SeerrResult
-import me.cazan.zen.data.SeerrSignedOut
+import me.cazan.zen.data.SeerrClient
+import me.cazan.zen.data.SeerrNotReady
 import me.cazan.zen.data.SeerrState
 import me.cazan.zen.data.SeerrTitle
 import me.cazan.zen.data.SpotlightItem
@@ -198,10 +199,10 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
     val jellyfin = allApps.firstOrNull { it.packageName == JELLYFIN_TV } ?: allApps.firstOrNull { it.packageName == JELLYFIN_MOBILE }
 
     fun seerrProblem(e: Throwable): String = when {
-        e is SeerrSignedOut -> "Seerr signed you out. Sign in again in Settings → Web Admin."
+        e is SeerrNotReady -> e.message.orEmpty()
         (e as? HttpStatusException)?.code == 403 -> "Seerr refused: request limit reached or no permission."
         e is HttpStatusException -> "Seerr returned HTTP ${e.code}."
-        else -> "Couldn't reach Seerr (${e.message ?: "offline"})."
+        else -> SeerrClient.UNREACHABLE
     }
 
     LaunchedEffect(searchQuery) {

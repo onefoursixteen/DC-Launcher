@@ -50,59 +50,99 @@ data class SeerrResult(
     val key: String get() = "$type:$id"
 }
 
-/** Thrown when Seerr no longer accepts the saved session (signed out, or it expired). */
-class SeerrSignedOut : IOException("Seerr session expired")
+/** Seerr can't be used right now; [message] says why in plain words (e.g. VPN off, wrong password). */
+class SeerrNotReady(message: String) : IOException(message)
 
 /**
- * Seerr (Jellyseerr/Overseerr) on the home network, signed in as the user's Jellyfin account.
- * Only the Seerr session cookie is kept on the TV, never the password; requests are made as
- * that user, so their quotas and auto-approve rules apply.
+ * Seerr (Jellyseerr/Overseerr), signed in as the user's Jellyfin account. Requests are made as
+ * that user, so their quotas and auto-approve rules apply. The login is saved encrypted so the
+ * TV can connect later (e.g. once a VPN is up) and sign in again when Seerr ends the session.
  */
 class SeerrClient(private val prefs: LauncherPrefs) {
     private val titles = ConcurrentHashMap<String, Pair<Long, SeerrTitle>>()
-    private val signedOutState = MutableStateFlow(false)
+    private val statusState = MutableStateFlow("")
+    private val connectLock = Any()
 
-    /** True after Seerr rejected the saved session; Web Admin offers to sign in again. */
-    val signedOut: StateFlow<Boolean> = signedOutState.asStateFlow()
+    /** Last connect result for Settings and Web Admin, e.g. "Connected as Daniel". */
+    val status: StateFlow<String> = statusState.asStateFlow()
 
-    val connected: Boolean get() = prefs.config.value.seerr != null
+    /** Sign-in details are saved (they may not have connected yet). */
+    val configured: Boolean get() = prefs.config.value.seerr != null
 
     // ---------------------------------------------------------------- sign-in
 
-    /** Signs in with Jellyfin credentials and saves the session. Returns null, or why it failed. */
-    suspend fun signIn(rawUrl: String, username: String, password: String): String? = withContext(Dispatchers.IO) {
-        val base = normalise(rawUrl) ?: return@withContext "Use an address like http://192.168.0.20:5055 (home network) or an https:// address."
-        try {
-            val publicSettings = JSONObject(call(base, null, "GET", "/api/v1/settings/public", null).body)
-            if (publicSettings.optInt("mediaServerType", 0) !in setOf(0, 2, 3)) {
-                return@withContext "This Seerr server uses Plex, not Jellyfin."
-            }
-            val res = call(base, null, "POST", "/api/v1/auth/jellyfin",
-                JSONObject().put("username", username).put("password", password))
-            val cookie = res.cookie ?: return@withContext "Seerr didn't start a session. Check the address."
-            val user = JSONObject(res.body)
-            val name = user.optString("displayName").ifEmpty { user.optString("jellyfinUsername") }.ifEmpty { username }
-            prefs.update { it.copy(seerr = SeerrAccount(base, cookie, user.optInt("id"), name)) }
-            signedOutState.value = false
+    /**
+     * Saves the address and Jellyfin login without contacting Seerr, so it works while the VPN
+     * that reaches Seerr is off. An empty [password] keeps the saved one. Returns an error or null.
+     */
+    fun saveLogin(rawUrl: String, username: String, password: String): String? {
+        val base = normalise(rawUrl) ?: return BAD_URL
+        val old = prefs.config.value.seerr
+        val sealed = when {
+            password.isNotEmpty() -> SecretBox.seal(password)
+            old != null && old.username == username && old.sealedPassword.isNotEmpty() -> old.sealedPassword
+            else -> return "Enter the Jellyfin password."
+        }
+        val same = old != null && old.url == base && old.username == username && old.sealedPassword == sealed
+        prefs.update { it.copy(seerr = if (same) old else SeerrAccount(base, username, sealed)) }
+        if (!same) {
             titles.clear()
-            null
+            statusState.value = "Saved · not connected yet"
+        }
+        return null
+    }
+
+    /**
+     * Signs in to Seerr with the saved Jellyfin login and keeps the session. Called from
+     * Settings → Seerr, and automatically when the session has ended. Returns an error or null.
+     */
+    suspend fun connect(): String? = withContext(Dispatchers.IO) { connectBlocking() }
+
+    private fun connectBlocking(): String? = synchronized(connectLock) {
+        val account = prefs.config.value.seerr ?: return "Add your Seerr details in Web Admin first."
+        val password = SecretBox.open(account.sealedPassword)
+            ?: return "The saved password can't be read. Enter it again in Web Admin.".also { statusState.value = it }
+        val result = try {
+            val publicSettings = JSONObject(call(account.url, null, "GET", "/api/v1/settings/public", null).body)
+            if (publicSettings.optInt("mediaServerType", 0) !in setOf(0, 2, 3)) {
+                "This Seerr server uses Plex, not Jellyfin."
+            } else {
+                val res = call(account.url, null, "POST", "/api/v1/auth/jellyfin",
+                    JSONObject().put("username", account.username).put("password", password))
+                val cookie = res.cookie
+                if (cookie == null) "Seerr didn't start a session. Check the address." else {
+                    val user = JSONObject(res.body)
+                    val name = user.optString("displayName").ifEmpty { user.optString("jellyfinUsername") }.ifEmpty { account.username }
+                    prefs.update { c ->
+                        c.copy(seerr = c.seerr?.takeIf { it.url == account.url && it.username == account.username }
+                            ?.copy(cookie = cookie, userId = user.optInt("id"), name = name) ?: c.seerr)
+                    }
+                    titles.clear()
+                    null
+                }
+            }
         } catch (e: HttpStatusException) {
             when (e.code) {
                 401, 403 -> "Wrong Jellyfin username or password, or this user isn't allowed to use Seerr."
                 404 -> "That address doesn't look like a Seerr server."
                 else -> "Seerr returned HTTP ${e.code}."
             }
-        } catch (e: Exception) {
-            "Couldn't reach Seerr (${e.message ?: "offline"})."
+        } catch (_: Exception) {
+            UNREACHABLE
         }
+        statusState.value = result ?: "Connected as ${prefs.config.value.seerr?.name.orEmpty()}"
+        return result
     }
 
-    fun signOut() {
+    /** Removes the saved details and ends the Seerr session. */
+    fun forget() {
         val account = prefs.config.value.seerr ?: return
         prefs.update { it.copy(seerr = null) }
         titles.clear()
-        signedOutState.value = false
-        Thread { runCatching { call(account.url, account.cookie, "POST", "/api/v1/auth/logout", JSONObject()) } }.start()
+        statusState.value = ""
+        account.cookie?.let { cookie ->
+            Thread { runCatching { call(account.url, cookie, "POST", "/api/v1/auth/logout", JSONObject()) } }.start()
+        }
     }
 
     // ---------------------------------------------------------------- library
@@ -159,23 +199,36 @@ class SeerrClient(private val prefs: LauncherPrefs) {
 
     // ---------------------------------------------------------------- plumbing
 
+    /**
+     * One API call with the saved session. With no session yet, or when Seerr has ended it,
+     * signs in again with the saved login and retries once.
+     */
     private fun api(method: String, path: String, body: JSONObject?): String {
-        val account = prefs.config.value.seerr ?: throw SeerrSignedOut()
+        var account = prefs.config.value.seerr ?: throw SeerrNotReady("Add your Seerr details in Web Admin first.")
+        if (account.cookie == null) {
+            connectBlocking()?.let { throw SeerrNotReady(it) }
+            account = prefs.config.value.seerr ?: throw SeerrNotReady("Seerr was removed.")
+        }
         return try {
-            val res = call(account.url, account.cookie, method, path, body)
-            // Seerr's session is rolling: keep the refreshed cookie so it doesn't lapse while in use.
-            if (res.cookie != null && res.cookie != account.cookie) {
-                prefs.update { c -> c.copy(seerr = c.seerr?.takeIf { it.cookie == account.cookie }?.copy(cookie = res.cookie) ?: c.seerr) }
-            }
-            res.body
+            send(account, method, path, body)
         } catch (e: HttpStatusException) {
             // A 403 on a request is a quota or permission answer, not a lost session.
-            if (e.code == 401 || (e.code == 403 && path != "/api/v1/request")) {
-                signedOutState.value = true
-                throw SeerrSignedOut()
-            }
-            throw e
+            if (e.code != 401 && (e.code != 403 || path == "/api/v1/request")) throw e
+            connectBlocking()?.let { throw SeerrNotReady(it) }
+            send(prefs.config.value.seerr ?: throw SeerrNotReady("Seerr was removed."), method, path, body)
+        } catch (e: IOException) {
+            if (e is SeerrNotReady) throw e
+            throw SeerrNotReady(UNREACHABLE)
         }
+    }
+
+    private fun send(account: SeerrAccount, method: String, path: String, body: JSONObject?): String {
+        val res = call(account.url, account.cookie, method, path, body)
+        // Seerr's session is rolling: keep the refreshed cookie so it doesn't lapse while in use.
+        if (res.cookie != null && res.cookie != account.cookie) {
+            prefs.update { c -> c.copy(seerr = c.seerr?.takeIf { it.cookie == account.cookie }?.copy(cookie = res.cookie) ?: c.seerr) }
+        }
+        return res.body
     }
 
     private class Res(val body: String, val cookie: String?)
@@ -255,6 +308,8 @@ class SeerrClient(private val prefs: LauncherPrefs) {
 
     companion object {
         private const val CACHE_MS = 5 * 60_000L
+        const val UNREACHABLE = "Can't reach Seerr. Is the VPN on?"
+        const val BAD_URL = "Use an address like http://192.168.0.20:5055 (home network) or an https:// address."
 
         /**
          * "192.168.0.20:5055" → "http://192.168.0.20:5055". Plain http is accepted only for
