@@ -105,6 +105,11 @@ class SpotlightRepository(private val context: Context) {
 
     fun cachedLogo(item: SpotlightItem): ImageBitmap? = item.logo?.let { bitmaps.get("w500$it") }
 
+    /** TMDB poster (2:3) for search results. */
+    suspend fun poster(path: String): ImageBitmap? = image(path, "w342", alpha = false)
+
+    fun cachedPoster(path: String): ImageBitmap? = bitmaps.get("w342$path")
+
     fun trimMemory() = bitmaps.evictAll()
 
     // ---------------------------------------------------------------- fetching

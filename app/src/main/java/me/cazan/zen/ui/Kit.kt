@@ -114,7 +114,7 @@ fun Note(text: String, modifier: Modifier = Modifier, color: Color = Zen.TextDim
     Txt(text, modifier, size = 15.sp, color = color, maxLines = 4)
 
 @Composable
-private fun rememberFocusScale(focused: Boolean, to: Float = 1.06f): Float {
+internal fun rememberFocusScale(focused: Boolean, to: Float = 1.06f): Float {
     val scale by animateFloatAsState(if (focused) to else 1f, tween(120), label = "focusScale")
     return scale
 }

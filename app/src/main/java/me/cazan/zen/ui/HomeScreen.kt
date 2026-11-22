@@ -31,6 +31,7 @@ import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
@@ -56,12 +57,18 @@ import java.util.Date
 import java.util.Locale
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import me.cazan.zen.ZenApp
 import me.cazan.zen.data.AppEntry
 import me.cazan.zen.data.ClockFormat
 import me.cazan.zen.data.Config
 import me.cazan.zen.data.HomeLayout
+import me.cazan.zen.data.HttpStatusException
 import me.cazan.zen.data.NetState
+import me.cazan.zen.data.SeerrResult
+import me.cazan.zen.data.SeerrSignedOut
+import me.cazan.zen.data.SeerrState
+import me.cazan.zen.data.SeerrTitle
 import me.cazan.zen.data.SpotlightItem
 import me.cazan.zen.data.WatchItem
 import me.cazan.zen.data.WatchStatus
@@ -77,6 +84,8 @@ private const val TAB_FAVORITES = "fav"
 private const val TAB_ALL = "all"
 private const val TAB_WATCH = "watch"
 private const val SPOTLIGHT_ROTATE_MS = 12_000L
+private const val JELLYFIN_TV = "org.jellyfin.androidtv"
+private const val JELLYFIN_MOBILE = "org.jellyfin.mobile"
 private val SPOTLIGHT_HEIGHT = 156.dp
 
 private data class TabSpec(val id: String, val title: String)
@@ -175,6 +184,56 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
     val watchCols = config.columns.coerceAtLeast(4)
     var spotFocused by remember { mutableStateOf(false) }
     var spotDetails by remember { mutableStateOf<SpotlightItem?>(null) }
+
+    // ---- Seerr: search, per-title status and requests (signed in as the Jellyfin user)
+    val scope = rememberCoroutineScope()
+    var askSearch by remember { mutableStateOf(false) }
+    var searchQuery by remember { mutableStateOf<String?>(null) }
+    var searchResults by remember { mutableStateOf<List<SeerrResult>?>(null) }
+    var searchError by remember { mutableStateOf<String?>(null) }
+    var detailsFromSearch by remember { mutableStateOf(false) }
+    var seerrTitle by remember { mutableStateOf<SeerrTitle?>(null) }
+    var seerrMessage by remember { mutableStateOf<String?>(null) }
+    var pickSeasons by remember { mutableStateOf<SeerrTitle?>(null) }
+    val jellyfin = allApps.firstOrNull { it.packageName == JELLYFIN_TV } ?: allApps.firstOrNull { it.packageName == JELLYFIN_MOBILE }
+
+    fun seerrProblem(e: Throwable): String = when {
+        e is SeerrSignedOut -> "Seerr signed you out. Sign in again in Settings → Web Admin."
+        (e as? HttpStatusException)?.code == 403 -> "Seerr refused: request limit reached or no permission."
+        e is HttpStatusException -> "Seerr returned HTTP ${e.code}."
+        else -> "Couldn't reach Seerr (${e.message ?: "offline"})."
+    }
+
+    LaunchedEffect(searchQuery) {
+        val q = searchQuery ?: return@LaunchedEffect
+        searchResults = null
+        searchError = null
+        runCatching { app.seerr.search(q) }
+            .onSuccess { searchResults = it }
+            .onFailure { searchError = seerrProblem(it) }
+    }
+    // Status of the title whose details are open (search results load it before opening).
+    LaunchedEffect(spotDetails?.key, config.seerr != null) {
+        val item = spotDetails
+        seerrMessage = null
+        if (item == null || config.seerr == null) { seerrTitle = null; return@LaunchedEffect }
+        if (seerrTitle?.let { "${it.type}:${it.id}" } != item.key) seerrTitle = null
+        runCatching { app.seerr.title(item.type, item.id) }
+            .onSuccess { seerrTitle = it }
+            .onFailure { seerrMessage = seerrProblem(it) }
+    }
+    fun requestSeerr(t: SeerrTitle, seasons: List<Int>?) {
+        seerrMessage = "Sending the request…"
+        scope.launch {
+            runCatching { app.seerr.request(t.type, t.id, seasons) }
+                .onSuccess { fresh ->
+                    seerrTitle = fresh
+                    seerrMessage = "Requested ✓ · ${fresh.state.label.ifEmpty { "Seerr will add it soon" }}"
+                    searchResults = searchResults?.map { if (it.type == fresh.type && it.id == fresh.id) it.copy(state = fresh.state) else it }
+                }
+                .onFailure { seerrMessage = seerrProblem(it) }
+        }
+    }
     // The spotlight stays put; only the two-row app window below it slides.
     var windowTop by remember { mutableIntStateOf(0) }
     LaunchedEffect(tabId) { windowTop = 0 }
@@ -253,7 +312,10 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
 
         // 5% / 2.5% safe-area padding: keeps everything inside TV overscan.
         Column(Modifier.fillMaxSize().padding(horizontal = 48.dp, vertical = 27.dp)) {
-            TopBar(config, weather, net, actions, homeVisible = visible) { showNetwork = true }
+            TopBar(
+                config, weather, net, actions, homeVisible = visible,
+                onSearch = if (config.seerr != null) ({ askSearch = true }) else null,
+            ) { showNetwork = true }
             if (spotOn && spotItem != null) {
                 Box(Modifier.fillMaxWidth().height(SPOTLIGHT_HEIGHT).clipToBounds(), contentAlignment = Alignment.BottomStart) {
                     SpotlightPanel(
@@ -417,20 +479,79 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                 installed = allApps,
                 region = config.place?.countryCode,
                 onOpenApp = { spotDetails = null; actions.launch(it) },
-                onDismiss = { spotDetails = null },
+                onDismiss = { spotDetails = null; detailsFromSearch = false },
                 inWatchlist = watched != null,
                 onToggleWatchlist = {
                     if (watched != null) prefs.removeFromWatchlist(item.key) else prefs.addToWatchlist(item.toWatchItem())
                 },
-                onNotInterested = if (item.reason == "From your watchlist") null else ({
+                onNotInterested = if (item.reason == "From your watchlist" || detailsFromSearch) null else ({
                     spotDetails = null
                     prefs.notInterested(item.key)
                 }),
                 onTrailer = trailer?.let { t -> { actions.playTrailer(t) } },
+                seerrLine = if (config.seerr == null) null else
+                    seerrMessage ?: seerrTitle?.let { t ->
+                        if (t.type == "tv" && t.state == SeerrState.PARTIAL) {
+                            val have = t.seasons.filter { it.state == SeerrState.AVAILABLE }.map { it.number }
+                            "In your library: season${if (have.size == 1) "" else "s"} ${have.joinToString(", ")}"
+                        } else t.state.label
+                    } ?: "Checking Seerr…",
+                onRequest = seerrTitle?.takeIf { t ->
+                    t.state == SeerrState.NONE || t.state == SeerrState.DECLINED ||
+                        (t.type == "tv" && t.seasons.any { it.state == SeerrState.NONE || it.state == SeerrState.DECLINED })
+                }?.let { t -> { if (t.type == "tv") pickSeasons = t else requestSeerr(t, null) } },
+                onWatchLibrary = jellyfin?.takeIf {
+                    seerrTitle?.state == SeerrState.AVAILABLE || seerrTitle?.state == SeerrState.PARTIAL
+                }?.let { j -> { spotDetails = null; detailsFromSearch = false; actions.launch(j) } },
+                fromSearch = detailsFromSearch,
                 status = watched?.let { w ->
                     listOfNotNull(watchLabel(w, watchStatus[w.key], allApps).text, watchDetail(w, watchStatus[w.key]))
                         .distinct().joinToString("\n")
                 },
+            )
+        }
+
+        pickSeasons?.let { t ->
+            SeasonPickerDialog(
+                title = t,
+                name = spotDetails?.title.orEmpty(),
+                onRequest = { seasons -> pickSeasons = null; requestSeerr(t, seasons) },
+                onDismiss = { pickSeasons = null },
+            )
+        }
+
+        if (askSearch) {
+            TextInputDialog(
+                title = "Search movies and series",
+                initial = searchQuery.orEmpty(),
+                hint = "Title (or press the mic on your remote)",
+                onDismiss = { askSearch = false },
+                onDone = { q ->
+                    askSearch = false
+                    if (q.isNotBlank()) searchQuery = q.trim()
+                },
+            )
+        }
+
+        if (searchQuery != null && !askSearch) {
+            SeerrSearchScreen(
+                query = searchQuery.orEmpty(),
+                results = searchResults,
+                error = searchError,
+                images = app.spotlight,
+                onOpen = { r ->
+                    // Load the title's Seerr status first, so "Request" can take the focus.
+                    scope.launch {
+                        seerrTitle = runCatching { app.seerr.title(r.type, r.id) }.getOrNull()
+                        detailsFromSearch = true
+                        spotDetails = SpotlightItem(
+                            r.id, r.type, r.title, r.overview, r.year, emptyList(), r.rating,
+                            r.backdrop.orEmpty(), null, emptyList(), "Search",
+                        )
+                    }
+                },
+                onNewSearch = { askSearch = true },
+                onClose = { searchQuery = null; searchResults = null },
             )
         }
 
@@ -490,7 +611,15 @@ private fun rememberMinuteClock(): Long {
 }
 
 @Composable
-private fun TopBar(config: Config, weather: WeatherNow?, net: NetState, actions: HomeActions, homeVisible: Boolean, onNetwork: () -> Unit) {
+private fun TopBar(
+    config: Config,
+    weather: WeatherNow?,
+    net: NetState,
+    actions: HomeActions,
+    homeVisible: Boolean,
+    onSearch: (() -> Unit)?,
+    onNetwork: () -> Unit,
+) {
     val context = LocalContext.current
     val now = rememberMinuteClock()
     val is24h = when (config.clock) {
@@ -521,6 +650,10 @@ private fun TopBar(config: Config, weather: WeatherNow?, net: NetState, actions:
             Spacer(Modifier.width(32.dp))
         }
 
+        if (onSearch != null) {
+            ZenIconButton(onClick = onSearch) { SearchIcon(it) }
+            Spacer(Modifier.width(12.dp))
+        }
         NetworkButton(net, onNetwork)
         Spacer(Modifier.width(12.dp))
         ZenIconButton(onClick = actions.openSystemSettings) { SlidersIcon(it) }

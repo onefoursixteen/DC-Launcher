@@ -1,5 +1,23 @@
 # Changelog
 
+## v1.4.0 — 2026-11-22
+
+### New
+- **Seerr search and requests.** Sign in to your Seerr server with your **Jellyfin** account in
+  Web Admin (only the Seerr session is kept on the TV, never the password). Then:
+  - a 🔍 button on the home screen searches movies and series, with posters and
+    *In library* / *Requested* / *Downloading* badges;
+  - the details panel (search, spotlight and watchlist) shows the title's Seerr status and
+    has **Request**, plus **Watch in Jellyfin** when it's already in your library;
+  - series have a season picker (all missing seasons, the latest one, or pick your own);
+  - requests are made as your Jellyfin user, so your Seerr limits and auto-approval apply;
+  - Web Admin search results get a **Request** button too.
+- Plain `http://` is allowed only for Seerr servers on your home network; internet
+  addresses must use `https://`.
+
+### Install
+Updates any earlier version in place and keeps your settings: install `dc-launcher-v1.4.0.apk` over it.
+
 ## v1.3.1 — 2026-11-08
 
 ### Fixed

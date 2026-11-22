@@ -72,7 +72,12 @@ data class Config(
     val watchlist: List<WatchItem> = emptyList(),
     /** Signed-in TMDB account for watchlist sync; null when not connected. Never shown on the web page. */
     val tmdbAccount: TmdbAccount? = null,
+    /** Seerr signed in as the user's Jellyfin account; null when not set up. */
+    val seerr: SeerrAccount? = null,
 )
+
+/** A Seerr session. Only the session cookie is kept, never the Jellyfin password. */
+data class SeerrAccount(val url: String, val cookie: String, val userId: Int, val name: String)
 
 /** A TMDB user session (v3 session_id) approved by the user on themoviedb.org. */
 data class TmdbAccount(
@@ -179,6 +184,12 @@ class LauncherPrefs(context: Context) {
         notInterested = sp.getStringSet(K_NOT_INTERESTED, null)?.toSet() ?: emptySet(),
         watchlist = parseWatchlist(sp.getString(K_WATCHLIST, null)),
         tmdbAccount = sp.getString(K_TMDB_ACCOUNT, null)?.let(::parseAccount),
+        seerr = sp.getString(K_SEERR, null)?.let { raw ->
+            runCatching {
+                val o = JSONObject(raw)
+                SeerrAccount(o.getString("url"), o.getString("cookie"), o.optInt("user"), o.optString("name"))
+            }.getOrNull()
+        },
     )
 
     private fun save(c: Config) {
@@ -221,6 +232,9 @@ class LauncherPrefs(context: Context) {
             putString(K_TMDB_ACCOUNT, c.tmdbAccount?.let { a ->
                 JSONObject().put("session", a.sessionId).put("id", a.accountId).put("user", a.username)
                     .put("synced", JSONArray(a.synced.toList())).put("at", a.syncedAt).toString()
+            })
+            putString(K_SEERR, c.seerr?.let { s ->
+                JSONObject().put("url", s.url).put("cookie", s.cookie).put("user", s.userId).put("name", s.name).toString()
             })
         }
     }
@@ -299,6 +313,7 @@ class LauncherPrefs(context: Context) {
         const val K_NOT_INTERESTED = "not_interested"
         const val K_WATCHLIST = "watchlist"
         const val K_TMDB_ACCOUNT = "tmdb_account"
+        const val K_SEERR = "seerr"
     }
 }
 

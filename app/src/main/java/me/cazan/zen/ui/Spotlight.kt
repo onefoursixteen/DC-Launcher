@@ -201,6 +201,14 @@ fun SpotlightDialog(
     status: String? = null,
     /** Shown once TMDB has a trailer for this title. */
     onTrailer: (() -> Unit)? = null,
+    /** Seerr status line, e.g. "Requested · downloading"; null hides the Seerr part. */
+    seerrLine: String? = null,
+    /** "Request…" in Seerr; null when there's nothing to request. */
+    onRequest: (() -> Unit)? = null,
+    /** "Watch in Jellyfin" when the title is in the library and the app is installed. */
+    onWatchLibrary: (() -> Unit)? = null,
+    /** Search results: Seerr actions take the initial focus and the streaming note is skipped. */
+    fromSearch: Boolean = false,
 ) {
     val first = remember { FocusRequester() }
     val onApps = remember(item, installed) { providerApps(item.providers, installed) }
@@ -216,11 +224,25 @@ fun SpotlightDialog(
         if (item.overview.isNotEmpty()) {
             Txt(item.overview, Modifier.padding(horizontal = 18.dp, vertical = 10.dp), size = 16.sp, maxLines = 7)
         }
-        onApps.forEachIndexed { i, (provider, app) ->
-            ZenListItem("Open ${app.label}", { onOpenApp(app) },
-                if (i == 0) Modifier.focusRequester(first) else Modifier, detail = "Streaming on $provider")
+        // Only one item may carry the initial-focus requester.
+        var firstUsed = false
+        fun Modifier.firstFocus(): Modifier = if (!firstUsed) { firstUsed = true; focusRequester(first) } else this
+        if (seerrLine != null && seerrLine.isNotEmpty()) {
+            Txt(seerrLine, Modifier.padding(horizontal = 18.dp, vertical = 4.dp), size = 15.sp, color = Zen.Accent)
         }
-        when {
+        if (fromSearch) {
+            if (onWatchLibrary != null) ZenListItem("Watch in Jellyfin", onWatchLibrary, Modifier.firstFocus())
+            if (onRequest != null) ZenListItem("Request", onRequest, Modifier.firstFocus(), detail = "Asks Seerr as your Jellyfin user")
+        }
+        onApps.forEach { (provider, app) ->
+            ZenListItem("Open ${app.label}", { onOpenApp(app) }, Modifier.firstFocus(), detail = "Streaming on $provider")
+        }
+        if (!fromSearch) {
+            // These appear once Seerr answers, after the initial focus is placed, so they never take it.
+            if (onWatchLibrary != null) ZenListItem("Watch in Jellyfin", onWatchLibrary)
+            if (onRequest != null) ZenListItem("Request", onRequest, detail = "Asks Seerr as your Jellyfin user")
+        }
+        if (!fromSearch) when {
             missing.isNotEmpty() -> Note(
                 "Also on ${missing.joinToString(", ")} (not installed)",
                 Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = Zen.TextFaint,
@@ -231,7 +253,7 @@ fun SpotlightDialog(
                 Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = Zen.TextFaint,
             )
         }
-        val firstIfNoApp = if (onApps.isEmpty()) Modifier.focusRequester(first) else Modifier
+        val firstIfNoApp = Modifier.firstFocus()
         if (onTrailer != null) ZenListItem("Watch trailer", onTrailer, detail = "Plays on YouTube")
         if (inWatchlist) {
             // Already saved: Close comes before Remove, so a habitual double-OK can't delete it.

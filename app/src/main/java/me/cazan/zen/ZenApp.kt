@@ -7,6 +7,7 @@ import me.cazan.zen.data.AdminServer
 import me.cazan.zen.data.AppRepository
 import me.cazan.zen.data.LauncherPrefs
 import me.cazan.zen.data.NetworkMonitor
+import me.cazan.zen.data.SeerrClient
 import me.cazan.zen.data.SpotlightRepository
 import me.cazan.zen.data.TmdbSync
 import me.cazan.zen.data.WallpaperLoader
@@ -21,8 +22,9 @@ class ZenApp : Application() {
     val network by lazy { NetworkMonitor(this) }
     val spotlight by lazy { SpotlightRepository(this) }
     val watchlist by lazy { WatchlistRepository(this, spotlight) }
-    val admin by lazy { AdminServer(this, prefs, spotlight, watchlist, apps) }
+    val admin by lazy { AdminServer(this, prefs, spotlight, watchlist, apps, seerr) }
     val tmdbSync by lazy { TmdbSync(prefs, spotlight) }
+    val seerr by lazy { SeerrClient(prefs) }
 
     override fun onCreate() {
         super.onCreate()

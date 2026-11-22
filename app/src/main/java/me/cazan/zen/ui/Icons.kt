@@ -109,3 +109,13 @@ fun VpnIcon(color: Color, modifier: Modifier = Modifier) {
         drawRect(hole, topLeft = Offset(w * 0.46f, w * 0.44f), size = Size(w * 0.08f, w * 0.22f))
     }
 }
+
+@Composable
+fun SearchIcon(color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier.size(22.dp)) {
+        val w = size.width
+        val stroke = w * 0.11f
+        drawCircle(color, radius = w * 0.3f, center = Offset(w * 0.42f, w * 0.42f), style = Stroke(width = stroke))
+        drawLine(color, Offset(w * 0.64f, w * 0.64f), Offset(w * 0.9f, w * 0.9f), stroke, StrokeCap.Round)
+    }
+}
