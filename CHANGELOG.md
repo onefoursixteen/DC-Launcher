@@ -1,5 +1,13 @@
 # Changelog
 
+## v1.4.2 — 2026-11-25
+
+### Changed
+- The Request button's hint now reads "Place a request in Seerr".
+
+### Install
+Updates any earlier version in place and keeps your settings: install `dc-launcher-v1.4.2.apk` over it.
+
 ## v1.4.1 — 2026-11-22
 
 ### Changed

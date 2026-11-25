@@ -19,8 +19,8 @@ android {
         applicationId = "me.cazan.zen"
         minSdk = 23          // Android 6.0+: covers most older smart TVs and boxes
         targetSdk = 36
-        versionCode = 7
-        versionName = "1.4.1"
+        versionCode = 8
+        versionName = "1.4.2"
     }
 
     signingConfigs {

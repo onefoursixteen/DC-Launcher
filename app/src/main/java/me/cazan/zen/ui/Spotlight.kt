@@ -232,7 +232,7 @@ fun SpotlightDialog(
         }
         if (fromSearch) {
             if (onWatchLibrary != null) ZenListItem("Watch in Jellyfin", onWatchLibrary, Modifier.firstFocus())
-            if (onRequest != null) ZenListItem("Request", onRequest, Modifier.firstFocus(), detail = "Asks Seerr as your Jellyfin user")
+            if (onRequest != null) ZenListItem("Request", onRequest, Modifier.firstFocus(), detail = "Place a request in Seerr")
         }
         onApps.forEach { (provider, app) ->
             ZenListItem("Open ${app.label}", { onOpenApp(app) }, Modifier.firstFocus(), detail = "Streaming on $provider")
@@ -240,7 +240,7 @@ fun SpotlightDialog(
         if (!fromSearch) {
             // These appear once Seerr answers, after the initial focus is placed, so they never take it.
             if (onWatchLibrary != null) ZenListItem("Watch in Jellyfin", onWatchLibrary)
-            if (onRequest != null) ZenListItem("Request", onRequest, detail = "Asks Seerr as your Jellyfin user")
+            if (onRequest != null) ZenListItem("Request", onRequest, detail = "Place a request in Seerr")
         }
         if (!fromSearch) when {
             missing.isNotEmpty() -> Note(
