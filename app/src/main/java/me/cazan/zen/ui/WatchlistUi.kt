@@ -59,6 +59,8 @@ fun WatchTile(
     externalRequester: FocusRequester? = null,
     upTarget: FocusRequester? = null,
     rowEnd: Boolean = false,
+    /** Corner tag shown when [WatchLabel.promote] is set. */
+    badge: String = "NEW",
 ) {
     val requester = externalRequester ?: remember { FocusRequester() }
     val press = remember { PressTracker() }
@@ -143,7 +145,7 @@ fun WatchTile(
                         .padding(8.dp)
                         .background(Good, Zen.Pill)
                         .padding(horizontal = 10.dp, vertical = 2.dp)
-                ) { Txt("NEW", size = 11.sp, color = Zen.OnFocus, weight = FontWeight.Bold) }
+                ) { Txt(badge, size = 11.sp, color = Zen.OnFocus, weight = FontWeight.Bold) }
             }
         }
         Txt(

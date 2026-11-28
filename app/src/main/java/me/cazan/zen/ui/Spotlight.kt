@@ -209,6 +209,8 @@ fun SpotlightDialog(
     onWatchLibrary: (() -> Unit)? = null,
     /** Search results: Seerr actions take the initial focus and the streaming note is skipped. */
     fromSearch: Boolean = false,
+    /** False when streaming services weren't looked up (Seerr requests), so "not streaming" would mislead. */
+    showWhere: Boolean = true,
 ) {
     val first = remember { FocusRequester() }
     val onApps = remember(item, installed) { providerApps(item.providers, installed) }
@@ -242,7 +244,7 @@ fun SpotlightDialog(
             if (onWatchLibrary != null) ZenListItem("Watch in Jellyfin", onWatchLibrary)
             if (onRequest != null) ZenListItem("Request", onRequest, detail = "Place a request in Seerr")
         }
-        if (!fromSearch) when {
+        if (!fromSearch && showWhere) when {
             missing.isNotEmpty() -> Note(
                 "Also on ${missing.joinToString(", ")} (not installed)",
                 Modifier.padding(horizontal = 18.dp, vertical = 6.dp), color = Zen.TextFaint,

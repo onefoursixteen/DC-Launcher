@@ -1,5 +1,24 @@
 # Changelog
 
+## v1.5.0 — 2026-11-28
+
+### New
+- **Requests tab** (when Seerr is set up): everything you've asked for in Seerr, with its
+  status: *Waiting for approval*, *Downloading*, *In your library* or *Declined*. OK opens the
+  details, with **Watch in Jellyfin** once it's in your library.
+- **Just arrived:** when one of your requests lands in the library, its tile gets a
+  *JUST ARRIVED* tag and the title moves to the front of the spotlight for 3 days.
+- The TV checks your requests when the home screen appears (at most every 10 minutes) and every
+  15 minutes while it stays on screen. The last list is kept, so the tab still shows with the
+  VPN off; it updates the next time Seerr is reachable.
+
+### Fixed
+- Details of a requested title no longer say "Not on a subscription service" (streaming
+  services aren't looked up for requests).
+
+### Install
+Updates any earlier version in place and keeps your settings: install `dc-launcher-v1.5.0.apk` over it.
+
 ## v1.4.2 — 2026-11-25
 
 ### Changed

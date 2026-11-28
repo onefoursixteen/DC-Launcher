@@ -132,6 +132,23 @@ class MainActivity : ComponentActivity() {
             }
         }
 
+        // The user's Seerr requests: checked when home appears (at most every 10 minutes) and every
+        // 15 minutes while it stays visible, to spot titles that have just arrived in the library.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                app.prefs.config
+                    .map { c -> c.seerr?.let { it.url + "|" + it.username } }
+                    .distinctUntilChanged()
+                    .collectLatest { account ->
+                        if (account == null) return@collectLatest
+                        while (true) {
+                            app.seerr.refreshRequests()
+                            delay(15 * 60_000L)
+                        }
+                    }
+            }
+        }
+
         // Spotlight (every 12 h) and watchlist status (every 20 h), checked hourly and only while
         // home is visible. Adding a watchlist title restarts this, so it gets a badge right away.
         lifecycleScope.launch {

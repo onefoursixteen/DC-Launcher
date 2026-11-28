@@ -7,13 +7,16 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
+import java.io.File
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.InetAddress
 import java.net.URI
 import java.net.URL
 import java.net.URLEncoder
+import java.text.SimpleDateFormat
 import java.util.Locale
+import java.util.TimeZone
 import java.util.concurrent.ConcurrentHashMap
 
 /** Where a title stands in the user's Seerr / Jellyfin library. */
@@ -23,7 +26,10 @@ enum class SeerrState(val label: String) {
     PROCESSING("Requested · downloading"),
     PARTIAL("Partly in your library"),
     AVAILABLE("In your library"),
-    DECLINED("Request declined"),
+    DECLINED("Request declined");
+
+    /** How far along it is: the best of several requests for one title wins. */
+    val rank: Int get() = when (this) { NONE -> 0; DECLINED -> 1; PENDING -> 2; PROCESSING -> 3; PARTIAL -> 4; AVAILABLE -> 5 }
 }
 
 data class SeerrSeason(val number: Int, val name: String, val episodes: Int, val state: SeerrState)
@@ -50,6 +56,27 @@ data class SeerrResult(
     val key: String get() = "$type:$id"
 }
 
+/** One of the user's own Seerr requests, with what it's for and where it stands. */
+data class SeerrRequestItem(
+    val type: String,
+    val id: Int,
+    val title: String,
+    val year: String,
+    val overview: String,
+    val backdrop: String?,
+    val state: SeerrState,
+    val requestedAt: Long,
+    /** When it became available in the library (or more of it did); null while it isn't. */
+    val arrivedAt: Long?,
+) {
+    val key: String get() = "$type:$id"
+    fun justArrived(now: Long = System.currentTimeMillis()) = arrivedAt != null && now - arrivedAt < JUST_ARRIVED_MS
+
+    companion object {
+        const val JUST_ARRIVED_MS = 3 * 24 * 60 * 60 * 1000L
+    }
+}
+
 /** Seerr can't be used right now; [message] says why in plain words (e.g. VPN off, wrong password). */
 class SeerrNotReady(message: String) : IOException(message)
 
@@ -58,7 +85,13 @@ class SeerrNotReady(message: String) : IOException(message)
  * that user, so their quotas and auto-approve rules apply. The login is saved encrypted so the
  * TV can connect later (e.g. once a VPN is up) and sign in again when Seerr ends the session.
  */
-class SeerrClient(private val prefs: LauncherPrefs) {
+class SeerrClient(private val prefs: LauncherPrefs, filesDir: File) {
+    private val requestsFile = File(filesDir, "seerr_requests.json")
+    private val requestsState = MutableStateFlow(loadRequests())
+    @Volatile private var requestsFetchedAt = 0L
+
+    /** The user's own requests, newest first, kept on disk so the tab still shows with the VPN off. */
+    val requests: StateFlow<List<SeerrRequestItem>> = requestsState.asStateFlow()
     private val titles = ConcurrentHashMap<String, Pair<Long, SeerrTitle>>()
     private val statusState = MutableStateFlow("")
     private val connectLock = Any()
@@ -139,6 +172,8 @@ class SeerrClient(private val prefs: LauncherPrefs) {
         val account = prefs.config.value.seerr ?: return
         prefs.update { it.copy(seerr = null) }
         titles.clear()
+        requestsState.value = emptyList()
+        requestsFile.delete()
         statusState.value = ""
         account.cookie?.let { cookie ->
             Thread { runCatching { call(account.url, cookie, "POST", "/api/v1/auth/logout", JSONObject()) } }.start()
@@ -194,8 +229,121 @@ class SeerrClient(private val prefs: LauncherPrefs) {
         val body = JSONObject().put("mediaType", type).put("mediaId", id)
         if (type == "tv") body.put("seasons", seasons?.let { JSONArray(it) } ?: "all")
         api("POST", "/api/v1/request", body)
+        refreshRequests(force = true)
         title(type, id, fresh = true)
     }
+
+    // ---------------------------------------------------------------- my requests
+
+    /**
+     * Re-reads the user's requests (at most every 10 minutes unless [force]) and notes which
+     * ones have just become available. Quietly keeps the last list when Seerr is out of reach.
+     */
+    suspend fun refreshRequests(force: Boolean = false): Unit = withContext(Dispatchers.IO) {
+        val now = System.currentTimeMillis()
+        if (!force && now - requestsFetchedAt < REQUESTS_MIN_GAP_MS) return@withContext
+        if (prefs.config.value.seerr == null) return@withContext
+        runCatching { fetchRequests(now) }.onSuccess { list ->
+            requestsFetchedAt = now
+            if (list != requestsState.value) {
+                requestsState.value = list
+                saveRequests(list)
+            }
+        }
+    }
+
+    private fun fetchRequests(now: Long): List<SeerrRequestItem> {
+        // Signing in fills in the user id the filter needs.
+        val firstPage = api("GET", "/api/v1/request?take=50&skip=0&filter=all&sort=added" +
+            (prefs.config.value.seerr?.userId?.takeIf { it > 0 }?.let { "&requestedBy=$it" } ?: ""), null)
+        val me = prefs.config.value.seerr?.userId ?: 0
+        val arr = JSONObject(firstPage).optJSONArray("results") ?: JSONArray()
+        val rows = (0 until arr.length()).map { arr.getJSONObject(it) }
+            // Older Seerr versions ignore requestedBy for admins, so filter here too.
+            .filter { me == 0 || it.optJSONObject("requestedBy")?.optInt("id", me) == me }
+
+        val previous = requestsState.value.associateBy { it.key }
+        val byTitle = LinkedHashMap<String, SeerrRequestItem>()
+        for (r in rows) {
+            val media = r.optJSONObject("media") ?: continue
+            val type = media.optString("mediaType").takeIf { it == "movie" || it == "tv" } ?: continue
+            val id = media.optInt("tmdbId").takeIf { it > 0 } ?: continue
+            val key = "$type:$id"
+            val state = when (media.optInt("status")) {
+                5 -> SeerrState.AVAILABLE
+                4 -> SeerrState.PARTIAL
+                else -> when (r.optInt("status")) {
+                    1 -> SeerrState.PENDING
+                    3 -> SeerrState.DECLINED
+                    5 -> SeerrState.AVAILABLE
+                    else -> SeerrState.PROCESSING
+                }
+            }
+            val requestedAt = parseTime(r.optString("createdAt")) ?: now
+            val existing = byTitle[key]
+            // Several requests for one series (one per season batch): keep the newest and the best state.
+            if (existing != null && existing.requestedAt >= requestedAt && existing.state.rank >= state.rank) continue
+
+            val old = previous[key]
+            val inLibrary = state == SeerrState.AVAILABLE || state == SeerrState.PARTIAL
+            val arrivedAt = when {
+                !inLibrary -> null
+                old == null -> parseTime(media.optString("mediaAddedAt"))?.takeIf { now - it < SeerrRequestItem.JUST_ARRIVED_MS }
+                old.state != SeerrState.AVAILABLE && old.state != SeerrState.PARTIAL -> now
+                old.state == SeerrState.PARTIAL && state == SeerrState.AVAILABLE -> now
+                else -> old.arrivedAt
+            }
+            val info = old?.takeIf { it.title.isNotEmpty() } ?: details(type, id)
+            byTitle[key] = SeerrRequestItem(
+                type, id, info?.title.orEmpty(), info?.year.orEmpty(), info?.overview.orEmpty(), info?.backdrop,
+                state, maxOf(requestedAt, existing?.requestedAt ?: 0), arrivedAt,
+            )
+        }
+        return byTitle.values.filter { it.title.isNotEmpty() }
+            .sortedWith(compareByDescending<SeerrRequestItem> { it.justArrived(now) }.thenByDescending { it.requestedAt })
+    }
+
+    /** Title, year, overview and backdrop of a requested title (fetched once, then kept on disk). */
+    private fun details(type: String, id: Int): SeerrRequestItem? = runCatching {
+        val o = JSONObject(api("GET", "/api/v1/$type/$id?language=${lang()}", null))
+        val movie = type == "movie"
+        SeerrRequestItem(
+            type, id, o.optString(if (movie) "title" else "name"),
+            o.optString(if (movie) "releaseDate" else "firstAirDate").take(4), o.optString("overview"),
+            o.optString("backdropPath").ifEmpty { null }, SeerrState.NONE, 0, null,
+        )
+    }.getOrNull()
+
+    private fun parseTime(s: String): Long? {
+        if (s.isEmpty()) return null
+        for (pattern in listOf("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", "yyyy-MM-dd'T'HH:mm:ss'Z'", "yyyy-MM-dd HH:mm:ss")) {
+            val f = SimpleDateFormat(pattern, Locale.US).apply { timeZone = TimeZone.getTimeZone("UTC") }
+            runCatching { f.parse(s)?.time }.getOrNull()?.let { return it }
+        }
+        return null
+    }
+
+    private fun saveRequests(list: List<SeerrRequestItem>) = runCatching {
+        requestsFile.writeText(JSONArray().apply {
+            list.forEach { r ->
+                put(JSONObject().put("type", r.type).put("id", r.id).put("title", r.title).put("year", r.year)
+                    .put("overview", r.overview).putOpt("backdrop", r.backdrop).put("state", r.state.name)
+                    .put("requested", r.requestedAt).putOpt("arrived", r.arrivedAt))
+            }
+        }.toString())
+    }
+
+    private fun loadRequests(): List<SeerrRequestItem> = runCatching {
+        val arr = JSONArray(requestsFile.readText())
+        (0 until arr.length()).map { arr.getJSONObject(it) }.map { o ->
+            SeerrRequestItem(
+                o.getString("type"), o.getInt("id"), o.optString("title"), o.optString("year"), o.optString("overview"),
+                o.optString("backdrop").ifEmpty { null },
+                runCatching { SeerrState.valueOf(o.optString("state")) }.getOrDefault(SeerrState.NONE),
+                o.optLong("requested"), if (o.has("arrived")) o.getLong("arrived") else null,
+            )
+        }
+    }.getOrDefault(emptyList())
 
     // ---------------------------------------------------------------- plumbing
 
@@ -308,6 +456,7 @@ class SeerrClient(private val prefs: LauncherPrefs) {
 
     companion object {
         private const val CACHE_MS = 5 * 60_000L
+        private const val REQUESTS_MIN_GAP_MS = 10 * 60_000L
         const val UNREACHABLE = "Can't reach Seerr. Is the VPN on?"
         const val BAD_URL = "Use an address like http://192.168.0.20:5055 (home network) or an https:// address."
 

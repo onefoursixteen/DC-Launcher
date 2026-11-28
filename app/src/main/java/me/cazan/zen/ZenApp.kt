@@ -24,7 +24,7 @@ class ZenApp : Application() {
     val watchlist by lazy { WatchlistRepository(this, spotlight) }
     val admin by lazy { AdminServer(this, prefs, spotlight, watchlist, apps, seerr) }
     val tmdbSync by lazy { TmdbSync(prefs, spotlight) }
-    val seerr by lazy { SeerrClient(prefs) }
+    val seerr by lazy { SeerrClient(prefs, filesDir) }
 
     override fun onCreate() {
         super.onCreate()

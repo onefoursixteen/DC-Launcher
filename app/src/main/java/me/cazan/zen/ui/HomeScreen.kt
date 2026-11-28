@@ -66,6 +66,8 @@ import me.cazan.zen.data.HomeLayout
 import me.cazan.zen.data.HttpStatusException
 import me.cazan.zen.data.NetState
 import me.cazan.zen.data.SeerrResult
+import me.cazan.zen.data.WatchLabel
+import me.cazan.zen.data.SeerrRequestItem
 import me.cazan.zen.data.SeerrClient
 import me.cazan.zen.data.SeerrNotReady
 import me.cazan.zen.data.SeerrState
@@ -84,6 +86,9 @@ import me.cazan.zen.data.weatherLabel
 private const val TAB_FAVORITES = "fav"
 private const val TAB_ALL = "all"
 private const val TAB_WATCH = "watch"
+private const val TAB_REQUESTS = "requests"
+private const val REASON_ARRIVED = "Just arrived"
+private const val REASON_REQUEST = "Your request"
 private const val SPOTLIGHT_ROTATE_MS = 12_000L
 private const val JELLYFIN_TV = "org.jellyfin.androidtv"
 private const val JELLYFIN_MOBILE = "org.jellyfin.mobile"
@@ -119,6 +124,23 @@ private fun appsForTab(shown: List<AppEntry>, config: Config, tabId: String): Li
     }
 }
 
+private fun SeerrRequestItem.asSpotlight(): SpotlightItem = SpotlightItem(
+    id, type, title, overview, year, emptyList(), 0.0, backdrop.orEmpty(), null, emptyList(),
+    if (justArrived()) REASON_ARRIVED else REASON_REQUEST,
+)
+
+private fun SeerrRequestItem.asWatchItem() = WatchItem(type, id, title, year, backdrop, overview, requestedAt)
+
+/** The line under a Requests tile. */
+private fun SeerrRequestItem.statusText(): String = when (state) {
+    SeerrState.AVAILABLE -> if (justArrived()) "Just arrived · in your library" else "In your library"
+    SeerrState.PARTIAL -> if (justArrived()) "Just arrived · more of it is in your library" else "Partly in your library"
+    SeerrState.PROCESSING -> "Requested · downloading"
+    SeerrState.PENDING -> "Waiting for approval"
+    SeerrState.DECLINED -> "Request declined"
+    SeerrState.NONE -> "Requested"
+}
+
 private fun WatchItem.asSpotlight(s: WatchStatus?): SpotlightItem =
     s?.let { toSpotlight(it, "On your watchlist") }
         ?: SpotlightItem(id, type, title, overview, year, emptyList(), 0.0, backdrop.orEmpty(), null, emptyList(), "On your watchlist")
@@ -140,10 +162,13 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
     val shown = remember(ordered, config.hidden) { ordered.filterNot { it.key in config.hidden } }
     val hasFavorites = config.favorites.any { key -> shown.any { it.key == key } }
     val hasWatchlist = config.watchlist.isNotEmpty() && config.tmdbKey != null
-    val tabs = remember(hasFavorites, hasWatchlist, config.categories) {
+    val myRequests by app.seerr.requests.collectAsState()
+    val hasRequests = config.seerr != null && myRequests.isNotEmpty()
+    val tabs = remember(hasFavorites, hasWatchlist, hasRequests, config.categories) {
         buildList {
             if (hasFavorites) add(TabSpec(TAB_FAVORITES, "Favorites"))
             if (hasWatchlist) add(TabSpec(TAB_WATCH, "Watchlist"))
+            if (hasRequests) add(TabSpec(TAB_REQUESTS, "Requests"))
             add(TabSpec(TAB_ALL, "All apps"))
             config.categories.forEach { add(TabSpec(it.id, it.name)) }
         }
@@ -165,10 +190,14 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
     val selectedTabRequester = tabRequesters.getOrPut(tabId) { FocusRequester() }
 
     // ---- Spotlight state
-    // Watchlist titles that just became watchable go first; then this week's titles,
-    // minus dismissed ones and (optionally) anything not on an installed app.
-    val spotList = remember(spotItems, config.watchlist, watchStatus, config.onlyMine, config.notInterested, allApps) {
-        val promoted = config.watchlist.mapNotNull { w ->
+    // Requests that just arrived in the library go first, then watchlist titles that just became
+    // watchable, then this week's titles, minus dismissed ones and (optionally) anything not on
+    // an installed app.
+    val spotList = remember(spotItems, config.watchlist, watchStatus, config.onlyMine, config.notInterested, allApps, myRequests, config.seerr != null) {
+        val arrived = if (config.seerr == null) emptyList() else
+            myRequests.filter { it.justArrived() && it.backdrop != null }.map { it.asSpotlight() }
+        val arrivedKeys = arrived.mapTo(HashSet()) { it.key }
+        val promoted = arrived + config.watchlist.filter { it.key !in arrivedKeys }.mapNotNull { w ->
             val s = watchStatus[w.key] ?: return@mapNotNull null
             if (w.backdrop != null && watchLabel(w, s, allApps).promote) w.toSpotlight(s, "From your watchlist") else null
         }
@@ -273,7 +302,11 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
         }
         pendingFocus = true
     }
-    val gridCount = if (tabId == TAB_WATCH) config.watchlist.size else tabApps.size
+    val gridCount = when (tabId) {
+        TAB_WATCH -> config.watchlist.size
+        TAB_REQUESTS -> myRequests.size
+        else -> tabApps.size
+    }
     var scrollReset by remember { mutableIntStateOf(0) }
     LaunchedEffect(pendingFocus, gridCount > 0) {
         if (!pendingFocus || gridCount == 0) return@LaunchedEffect
@@ -364,6 +397,34 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                         externalRequester = if (index == 0) firstTile else null,
                         upTarget = if (index < watchCols) selectedTabRequester else null,
                         rowEnd = index % watchCols == watchCols - 1 || index == config.watchlist.lastIndex,
+                    )
+                }
+            } else if (tabId == TAB_REQUESTS) {
+                RowWindow(
+                    count = myRequests.size,
+                    columns = watchCols,
+                    topRow = windowTop,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .focusRestorer(firstTile),
+                ) { index, tileWidth ->
+                    val r = myRequests[index]
+                    val inLibrary = r.state == SeerrState.AVAILABLE || r.state == SeerrState.PARTIAL
+                    WatchTile(
+                        item = r.asWatchItem(),
+                        label = WatchLabel(r.statusText(), watchable = inLibrary, promote = r.justArrived(), app = jellyfin.takeIf { inLibrary }),
+                        repo = app.spotlight,
+                        wantsFocus = focusKey == r.key,
+                        onFocusTaken = { focusKey = null },
+                        onFocused = { windowTop = windowTopFor(index / watchCols, windowTop) },
+                        onClick = { spotDetails = r.asSpotlight() },
+                        onMenu = { spotDetails = r.asSpotlight() },
+                        modifier = Modifier.width(tileWidth),
+                        externalRequester = if (index == 0) firstTile else null,
+                        upTarget = if (index < watchCols) selectedTabRequester else null,
+                        rowEnd = index % watchCols == watchCols - 1 || index == myRequests.lastIndex,
+                        badge = "JUST ARRIVED",
                     )
                 }
             } else if (tabApps.isEmpty()) {
@@ -485,7 +546,7 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                 onToggleWatchlist = {
                     if (watched != null) prefs.removeFromWatchlist(item.key) else prefs.addToWatchlist(item.toWatchItem())
                 },
-                onNotInterested = if (item.reason == "From your watchlist" || detailsFromSearch) null else ({
+                onNotInterested = if (item.reason in setOf("From your watchlist", REASON_ARRIVED, REASON_REQUEST) || detailsFromSearch) null else ({
                     spotDetails = null
                     prefs.notInterested(item.key)
                 }),
@@ -505,6 +566,7 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                     seerrTitle?.state == SeerrState.AVAILABLE || seerrTitle?.state == SeerrState.PARTIAL
                 }?.let { j -> { spotDetails = null; detailsFromSearch = false; actions.launch(j) } },
                 fromSearch = detailsFromSearch,
+                showWhere = item.reason != REASON_ARRIVED && item.reason != REASON_REQUEST,
                 status = watched?.let { w ->
                     listOfNotNull(watchLabel(w, watchStatus[w.key], allApps).text, watchDetail(w, watchStatus[w.key]))
                         .distinct().joinToString("\n")
