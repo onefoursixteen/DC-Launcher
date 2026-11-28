@@ -1,11 +1,15 @@
 package me.cazan.zen.ui
 
+import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.window.DialogWindowProvider
+import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.graphics.Shape
+import android.os.Build
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
@@ -183,19 +187,8 @@ fun ZenIconButton(
         modifier
             .size(48.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
-            // Raised glass, like the dock: a soft shadow under the disc, a top-lit fill, a sheen
-            // over the upper half and a rim bright at the top. Focused, it turns frosted white.
-            .drawBehind {
-                val r = size.minDimension / 2
-                drawOval(
-                    Brush.radialGradient(
-                        listOf(Color(0x59000000), Color.Transparent),
-                        center = Offset(size.width / 2, size.height + r * 0.15f), radius = r * 1.05f,
-                    ),
-                    topLeft = Offset(-r * 0.05f, size.height - r * 0.55f),
-                    size = Size(size.width + r * 0.1f, r * 1.4f),
-                )
-            }
+            // Glass, like the dock: a top-lit fill, a sheen over the upper half and a rim bright
+            // at the top. Focused, it turns frosted white.
             .clip(CircleShape)
             .background(if (focused) GlassFocusFill else GlassFill)
             .drawBehind {
@@ -211,6 +204,27 @@ fun ZenIconButton(
         icon(if (focused) Zen.OnFocus else Zen.Text)
     }
 }
+
+private val DialogShape = RoundedCornerShape(20.dp)
+
+/**
+ * Frosted 3D glass for panels: a smoky top-lit fill (denser on TVs that can't blur what's behind),
+ * a sheen across the upper part and a rim bright along the top edge.
+ */
+private fun Modifier.glassPanel(shape: Shape): Modifier = this
+    .clip(shape)
+    .background(
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S)
+            Brush.verticalGradient(listOf(Color(0x8C3A4250), Color(0x7A1E232C), Color(0x8C141820)))
+        else Brush.verticalGradient(listOf(Color(0xF23A4250), Color(0xF21E232C)))
+    )
+    .drawBehind {
+        drawRect(
+            Brush.verticalGradient(0f to Color.White.copy(alpha = 0.14f), 0.35f to Color.Transparent),
+            size = Size(size.width, size.height * 0.35f),
+        )
+    }
+    .border(1.dp, Brush.verticalGradient(listOf(Color(0xA6FFFFFF), Color(0x1FFFFFFF), Color(0x33FFFFFF))), shape)
 
 private val GlassFill = Brush.verticalGradient(listOf(Color(0x47FFFFFF), Color(0x1AFFFFFF), Color(0x12FFFFFF)))
 private val GlassFocusFill = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xE6E4EAF4)))
@@ -294,6 +308,8 @@ fun ZenDialog(
     width: Dp = 480.dp,
     initialFocus: FocusRequester? = null,
     scrollable: Boolean = true,
+    /** Frosted 3D glass panel instead of the flat one (pair it with a blurred screen behind). */
+    glass: Boolean = false,
     content: @Composable ColumnScope.() -> Unit,
 ) {
     Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -301,6 +317,11 @@ fun ZenDialog(
         // the release). Ignore OK until it's pressed fresh inside the dialog, or releasing the
         // long press would "click" the first item.
         val armed = remember { booleanArrayOf(false) }
+        // Glass panels sit on a frosted screen, so dim it less and let the picture show through.
+        if (glass) {
+            val view = LocalView.current
+            SideEffect { (view.parent as? DialogWindowProvider)?.window?.setDimAmount(0.25f) }
+        }
         Column(
             Modifier
                 .onPreviewKeyEvent { ev ->
@@ -314,8 +335,7 @@ fun ZenDialog(
                     }
                 }
                 .width(width)
-                .clip(RoundedCornerShape(20.dp))
-                .background(Zen.Panel)
+                .then(if (glass) Modifier.glassPanel(DialogShape) else Modifier.clip(DialogShape).background(Zen.Panel))
                 .padding(24.dp),
         ) {
             Txt(title, Modifier.padding(start = 18.dp, bottom = 14.dp), size = 22.sp, weight = FontWeight.Medium)

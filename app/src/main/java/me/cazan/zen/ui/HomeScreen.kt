@@ -1,5 +1,8 @@
 package me.cazan.zen.ui
 
+import androidx.compose.ui.draw.blur
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.animateDpAsState
 import android.annotation.SuppressLint
 import android.text.format.DateFormat as AndroidDateFormat
 import androidx.activity.compose.BackHandler
@@ -340,7 +343,10 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
         return tabApps.getOrNull(i + 1)?.key ?: tabApps.getOrNull(i - 1)?.key
     }
 
-    Box(Modifier.fillMaxSize()) {
+    // While the network panel is open the home screen behind it is frosted (Android 12+; older
+    // TVs just get the dimmed backdrop).
+    val frost by animateDpAsState(if (showNetwork) 28.dp else 0.dp, tween(220), label = "frost")
+    Box(Modifier.fillMaxSize().then(if (frost > 0.dp) Modifier.blur(frost) else Modifier)) {
         WallpaperLayer(config.wallpaper)
         if (config.spotlight) SpotlightBackdrop(app.spotlight, spotItem, shown = spotOn)
 

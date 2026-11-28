@@ -66,7 +66,7 @@ fun NetworkDialog(
     var firstUsed = false
     fun Modifier.firstFocus(): Modifier = if (!firstUsed) { firstUsed = true; focusRequester(first) } else this
 
-    ZenDialog("Network", onDismiss, width = 560.dp, initialFocus = first) {
+    ZenDialog("Network", onDismiss, width = 560.dp, initialFocus = first, glass = true) {
         InfoLine(
             "Connection",
             when (net.type) {

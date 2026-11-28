@@ -1,5 +1,16 @@
 # Changelog
 
+## v1.6.2 — 2026-11-28
+
+### Changed
+- **Frosted network panel:** opening the network/VPN panel frosts the home screen behind it,
+  and the panel itself is 3D glass with a bright rim. (The blur needs Android 12 or newer;
+  older TVs show a solid glass panel instead.)
+- The round buttons in the top-right corner no longer cast a shadow.
+
+### Install
+Updates any earlier version in place and keeps your settings: install `dc-launcher-v1.6.2.apk` over it.
+
 ## v1.6.1 — 2026-11-28
 
 ### Changed
