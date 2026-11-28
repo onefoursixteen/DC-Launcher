@@ -632,6 +632,7 @@ private fun CategoriesSection(app: ZenApp, config: Config) {
     var creating by remember { mutableStateOf(false) }
     var renaming by remember { mutableStateOf<String?>(null) }
     var editing by remember { mutableStateOf<String?>(null) }
+    var deleting by remember { mutableStateOf<String?>(null) }
 
     ScrollPage {
         SectionTitle("Categories")
@@ -645,13 +646,16 @@ private fun CategoriesSection(app: ZenApp, config: Config) {
         Spacer(Modifier.height(4.dp))
         if (config.categories.isEmpty()) Note("No categories yet.", color = Zen.TextFaint)
         config.categories.forEachIndexed { i, cat ->
+            // Name and count share a narrow column so all four buttons fit on a 960dp-wide TV.
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Txt(cat.name, Modifier.width(200.dp), size = 18.sp, weight = FontWeight.Medium)
-                Txt("${cat.apps.count { it in installed }} apps", Modifier.width(80.dp), size = 15.sp, color = Zen.TextDim)
+                Column(Modifier.weight(1f)) {
+                    Txt(cat.name, size = 18.sp, weight = FontWeight.Medium, maxLines = 1)
+                    Txt("${cat.apps.count { it in installed }} apps", size = 14.sp, color = Zen.TextDim)
+                }
                 ZenButton("Apps…", { editing = cat.id })
                 ZenButton("Rename", { renaming = cat.id })
-                ZenButton("Move up", { app.prefs.moveCategoryUp(cat.id) }, enabled = i > 0)
-                ZenButton("Delete", { app.prefs.deleteCategory(cat.id) })
+                if (config.categories.size > 1) ZenButton("Move up", { app.prefs.moveCategoryUp(cat.id) }, enabled = i > 0)
+                ZenButton("Delete", { deleting = cat.id })
             }
         }
     }
@@ -665,6 +669,20 @@ private fun CategoriesSection(app: ZenApp, config: Config) {
         if (cat == null) renaming = null
         else TextInputDialog("Rename category", cat.name, "Name", onDismiss = { renaming = null },
             onDone = { app.prefs.renameCategory(id, it); renaming = null })
+    }
+    deleting?.let { id ->
+        val cat = config.categories.firstOrNull { it.id == id }
+        if (cat == null) {
+            deleting = null
+        } else {
+            val keep = remember { FocusRequester() }
+            ZenDialog("Delete “${cat.name}”?", { deleting = null }, width = 560.dp, initialFocus = keep) {
+                Note("The tab disappears from the home screen. The apps themselves stay installed.",
+                    Modifier.padding(horizontal = 18.dp, vertical = 6.dp))
+                ZenListItem("Keep it", { deleting = null }, Modifier.focusRequester(keep))
+                ZenListItem("Delete category", { app.prefs.deleteCategory(id); deleting = null })
+            }
+        }
     }
     editing?.let { id ->
         val cat = config.categories.firstOrNull { it.id == id }

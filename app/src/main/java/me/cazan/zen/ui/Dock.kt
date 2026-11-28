@@ -1,7 +1,13 @@
 package me.cazan.zen.ui
 
 import android.view.KeyEvent as NativeKeyEvent
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
@@ -97,49 +103,80 @@ fun DockRow(
 ) {
     val listState = rememberLazyListState()
     LaunchedEffect(scrollReset) { if (apps.isNotEmpty()) listState.scrollToItem(0) }
-    BoxWithConstraints(
-        modifier
-            .fillMaxWidth()
-            .clip(DockShape)
-            .background(Color(0x1AFFFFFF))
-            .border(1.dp, Color(0x52FFFFFF), DockShape)
-            .padding(vertical = 4.dp),
-    ) {
-        // Up to six apps share the width evenly; beyond that the row scrolls and its edges fade.
-        val visible = apps.size.coerceIn(1, MaxVisible)
+    BoxWithConstraints(modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+        // Items are always sized for six slots, so a dock with one or two apps keeps normal-sized
+        // icons and the glass panel shrinks around them, centred. Beyond six the row scrolls.
         val inner = maxWidth - SidePad * 2
-        val itemWidth = (inner - Gap * (visible - 1)) / visible
+        val itemWidth = (inner - Gap * (MaxVisible - 1)) / MaxVisible
         val scrolls = apps.size > MaxVisible
-        LazyRow(
-            state = listState,
-            modifier = Modifier
-                .fillMaxWidth()
-                .then(if (scrolls) Modifier.fadeEdges() else Modifier),
-            // Vertical room so the focused item's highlight (scaled up 8%) isn't clipped flat.
-            contentPadding = PaddingValues(horizontal = SidePad, vertical = 12.dp),
-            horizontalArrangement = Arrangement.spacedBy(Gap),
+        val shown = apps.size.coerceIn(1, MaxVisible)
+        val panelWidth = if (scrolls) maxWidth else itemWidth * shown + Gap * (shown - 1) + SidePad * 2
+        Box(
+            Modifier
+                .width(panelWidth)
+                .glassPanel()
+                .padding(vertical = 4.dp),
         ) {
-            itemsIndexed(apps, key = { _, e -> e.key }) { index, entry ->
-                DockItem(
-                    entry = entry,
-                    repo = repo,
-                    moving = movingKey == entry.key,
-                    wantsFocus = focusKey == entry.key,
-                    onFocusTaken = onFocusTaken,
-                    onOpen = { onOpen(entry) },
-                    onMenu = { onMenu(entry) },
-                    onMove = onMove,
-                    onDrop = onDrop,
-                    requester = if (index == 0) firstRequester else null,
-                    upTarget = upTarget,
-                    lastInRow = index == apps.lastIndex,
-                    index = index,
-                    width = itemWidth,
-                )
+            LazyRow(
+                state = listState,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .then(if (scrolls) Modifier.fadeEdges() else Modifier),
+                // Vertical room so the focused item (scaled and lifted) isn't clipped flat.
+                contentPadding = PaddingValues(horizontal = SidePad, vertical = 14.dp),
+                horizontalArrangement = Arrangement.spacedBy(Gap),
+            ) {
+                itemsIndexed(apps, key = { _, e -> e.key }) { index, entry ->
+                    DockItem(
+                        entry = entry,
+                        repo = repo,
+                        moving = movingKey == entry.key,
+                        wantsFocus = focusKey == entry.key,
+                        onFocusTaken = onFocusTaken,
+                        onOpen = { onOpen(entry) },
+                        onMenu = { onMenu(entry) },
+                        onMove = onMove,
+                        onDrop = onDrop,
+                        requester = if (index == 0) firstRequester else null,
+                        upTarget = upTarget,
+                        lastInRow = index == apps.lastIndex,
+                        index = index,
+                        width = itemWidth,
+                    )
+                }
             }
         }
     }
 }
+
+/**
+ * Raised glass: a soft shadow pooled under the panel, a top-lit gradient fill, a sheen across
+ * the upper half and a rim that is bright along the top edge and fades towards the bottom.
+ */
+private fun Modifier.glassPanel(): Modifier = this
+    .drawBehind {
+        // Only below the panel: anything drawn inside would show through the glass as a dark band.
+        val drop = 22.dp.toPx()
+        val inset = DockCorner.toPx()
+        drawRoundRect(
+            Brush.verticalGradient(
+                0f to Color(0x66000000), 1f to Color.Transparent,
+                startY = size.height, endY = size.height + drop,
+            ),
+            topLeft = Offset(inset, size.height),
+            size = Size(size.width - inset * 2, drop),
+            cornerRadius = CornerRadius(drop / 2),
+        )
+    }
+    .clip(DockShape)
+    .background(Brush.verticalGradient(listOf(Color(0x3DFFFFFF), Color(0x17FFFFFF), Color(0x0FFFFFFF))))
+    .drawBehind {
+        drawRect(
+            Brush.verticalGradient(0f to Color(0x24FFFFFF), 0.5f to Color.Transparent),
+            size = Size(size.width, size.height * 0.5f),
+        )
+    }
+    .border(1.dp, Brush.verticalGradient(listOf(Color(0x99FFFFFF), Color(0x26FFFFFF), Color(0x40FFFFFF))), DockShape)
 
 @Composable
 private fun DockItem(
@@ -162,7 +199,9 @@ private fun DockItem(
     val press = remember { PressTracker() }
     var focused by remember { mutableStateOf(false) }
     val lit = focused || moving
-    val scale by animateFloatAsState(if (lit) 1.08f else 1f, tween(140), label = "dockScale")
+    val scale by animateFloatAsState(if (lit) 1.1f else 1f, tween(160), label = "dockScale")
+    val lift by animateDpAsState(if (lit) 6.dp else 0.dp, tween(160), label = "dockLift")
+    val depth by animateDpAsState(if (lit) 14.dp else 3.dp, tween(160), label = "dockDepth")
     val logoAlpha by animateFloatAsState(if (lit) 1f else 0.9f, tween(140), label = "dockAlpha")
 
     var art by remember(entry.key) { mutableStateOf(repo.cachedArt(entry.key)) }
@@ -220,13 +259,17 @@ private fun DockItem(
             }
             .focusable()
             .pointerInput(entry.key) { detectTapGestures(onTap = { onOpen() }, onLongPress = { onMenu() }) }
-            .graphicsLayer { scaleX = scale; scaleY = scale }
+            .graphicsLayer { scaleX = scale; scaleY = scale; translationY = -lift.toPx() }
             .clip(DockShape)
-            .background(
+            .then(
                 when {
-                    moving -> Color(0x408AB4FF)
-                    focused -> Color(0x2EFFFFFF)
-                    else -> Color.Transparent
+                    moving -> Modifier
+                        .background(Color(0x408AB4FF))
+                        .border(1.dp, Color(0x998AB4FF), DockShape)
+                    focused -> Modifier
+                        .background(Brush.verticalGradient(listOf(Color(0x47FFFFFF), Color(0x14FFFFFF))))
+                        .border(1.dp, Brush.verticalGradient(listOf(Color(0xB3FFFFFF), Color(0x1AFFFFFF))), DockShape)
+                    else -> Modifier
                 }
             )
             .padding(vertical = 10.dp, horizontal = 10.dp),
@@ -237,9 +280,17 @@ private fun DockItem(
             Modifier
                 .fillMaxWidth()
                 .aspectRatio(16f / 9f)
-                .clip(DockShape)
-                .background(Color(0x33000000))
-                .graphicsLayer { alpha = logoAlpha },
+                .shadow(depth, DockShape, ambientColor = Color.Black, spotColor = Color.Black)
+                .background(Color(0x40000000))
+                .graphicsLayer { alpha = logoAlpha }
+                // Glossy highlight across the top of the banner, stronger when focused.
+                .drawWithContent {
+                    drawContent()
+                    drawRect(
+                        Brush.verticalGradient(0f to Color.White.copy(alpha = if (lit) 0.22f else 0.10f), 0.5f to Color.Transparent),
+                        size = Size(size.width, size.height * 0.5f),
+                    )
+                },
             contentAlignment = Alignment.Center,
         ) {
             val a = art

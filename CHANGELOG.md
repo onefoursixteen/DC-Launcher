@@ -1,5 +1,21 @@
 # Changelog
 
+## v1.6.0 — 2026-11-28
+
+### Changed
+- **New dock look:** the Dock layout is now a raised glass panel, lit from the top with a bright
+  rim and a soft shadow underneath. The focused app lifts up with a glossy highlight.
+- With only a few apps in a tab (for example a single favourite), the dock shrinks around them
+  and sits centred, so the app shows at its normal size instead of stretched across the screen.
+
+### Fixed
+- **Categories can be deleted again.** In Settings → Categories the row was wider than the
+  screen, so *Move up* and *Delete* were cut off. All buttons now fit, and Delete asks before
+  removing the category (the apps themselves stay installed).
+
+### Install
+Updates any earlier version in place and keeps your settings: install `dc-launcher-v1.6.0.apk` over it.
+
 ## v1.5.0 — 2026-11-28
 
 ### New
