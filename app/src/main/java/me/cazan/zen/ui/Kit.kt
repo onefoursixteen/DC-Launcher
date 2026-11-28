@@ -3,6 +3,11 @@ package me.cazan.zen.ui
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.foundation.basicMarquee
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -101,6 +106,14 @@ fun Txt(
     )
 }
 
+/**
+ * Scrolls a one-line caption sideways while [on] (the tile is focused), so a long name or status
+ * can be read in full. Text that already fits stays still.
+ */
+fun Modifier.crawlWhen(on: Boolean): Modifier =
+    if (on) basicMarquee(iterations = Int.MAX_VALUE, initialDelayMillis = 800, repeatDelayMillis = 1500, velocity = 40.dp)
+    else this
+
 @Composable
 fun SectionTitle(text: String, modifier: Modifier = Modifier) =
     Txt(text, modifier.padding(top = 8.dp), size = 22.sp, weight = FontWeight.Medium)
@@ -170,14 +183,39 @@ fun ZenIconButton(
         modifier
             .size(48.dp)
             .graphicsLayer { scaleX = scale; scaleY = scale }
+            // Raised glass, like the dock: a soft shadow under the disc, a top-lit fill, a sheen
+            // over the upper half and a rim bright at the top. Focused, it turns frosted white.
+            .drawBehind {
+                val r = size.minDimension / 2
+                drawOval(
+                    Brush.radialGradient(
+                        listOf(Color(0x59000000), Color.Transparent),
+                        center = Offset(size.width / 2, size.height + r * 0.15f), radius = r * 1.05f,
+                    ),
+                    topLeft = Offset(-r * 0.05f, size.height - r * 0.55f),
+                    size = Size(size.width + r * 0.1f, r * 1.4f),
+                )
+            }
             .clip(CircleShape)
-            .background(if (focused) Zen.Focus else Zen.Surface)
+            .background(if (focused) GlassFocusFill else GlassFill)
+            .drawBehind {
+                drawRect(
+                    Brush.verticalGradient(0f to Color.White.copy(alpha = if (focused) 0.35f else 0.16f), 0.5f to Color.Transparent),
+                    size = Size(size.width, size.height * 0.5f),
+                )
+            }
+            .border(1.dp, if (focused) GlassFocusRim else GlassRim, CircleShape)
             .clickable(interactionSource = source, indication = null, onClick = onClick),
         contentAlignment = Alignment.Center,
     ) {
         icon(if (focused) Zen.OnFocus else Zen.Text)
     }
 }
+
+private val GlassFill = Brush.verticalGradient(listOf(Color(0x47FFFFFF), Color(0x1AFFFFFF), Color(0x12FFFFFF)))
+private val GlassFocusFill = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0xE6E4EAF4)))
+private val GlassRim = Brush.verticalGradient(listOf(Color(0xA6FFFFFF), Color(0x26FFFFFF), Color(0x40FFFFFF)))
+private val GlassFocusRim = Brush.verticalGradient(listOf(Color(0xFFFFFFFF), Color(0x80FFFFFF)))
 
 /** Full-width row used in menus and settings lists. */
 @Composable

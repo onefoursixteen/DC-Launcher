@@ -373,6 +373,9 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                     count = config.watchlist.size,
                     columns = watchCols,
                     topRow = windowTop,
+                    // Watch tiles carry one short status line, so they can use more of the row.
+                    labelSpace = WATCH_LABEL_SPACE,
+                    topRoom = 6.dp,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -404,6 +407,9 @@ fun HomeScreen(app: ZenApp, homeSignal: Int, visible: Boolean, actions: HomeActi
                     count = myRequests.size,
                     columns = watchCols,
                     topRow = windowTop,
+                    // Watch tiles carry one short status line, so they can use more of the row.
+                    labelSpace = WATCH_LABEL_SPACE,
+                    topRoom = 6.dp,
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth()
@@ -859,3 +865,6 @@ private fun CategoryPickerDialog(
         }
     }
 }
+
+/** One 14sp status line plus its 8dp top padding, under each watchlist/request tile. */
+private val WATCH_LABEL_SPACE = 28.dp

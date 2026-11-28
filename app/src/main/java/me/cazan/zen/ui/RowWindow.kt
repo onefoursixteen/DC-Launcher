@@ -56,13 +56,17 @@ fun RowWindow(
     topRow: Int,
     modifier: Modifier = Modifier,
     tileAspect: Float = 16f / 9f,
+    /** Space under each tile for its text; callers with a shorter caption pass less. */
+    labelSpace: Dp = LabelSpace,
+    /** Space above each row for the focus scale; smaller tiles need less. */
+    topRoom: Dp = FocusRoom,
     item: @Composable (index: Int, tileWidth: Dp) -> Unit,
 ) {
     val rows = (count + columns - 1) / columns
     BoxWithConstraints(modifier) {
         val rowHeight = maxHeight / 2
         val cellWidth = (maxWidth - FocusRoom * 2 - ColumnGap * (columns - 1)) / columns
-        val tileWidth = min(cellWidth, (rowHeight - FocusRoom - LabelSpace) * tileAspect)
+        val tileWidth = min(cellWidth, (rowHeight - topRoom - labelSpace) * tileAspect)
         val slide by animateDpAsState(rowHeight * topRow, tween(280), label = "rowSlide")
 
         // Unbounded height: every row keeps its full height instead of being squeezed into the window.
@@ -78,7 +82,7 @@ fun RowWindow(
                 val inWindow = r == topRow || r == topRow + 1
                 val rowAlpha by animateFloatAsState(if (inWindow) 1f else 0f, tween(220), label = "rowAlpha")
                 Row(
-                    Modifier.fillMaxWidth().height(rowHeight).graphicsLayer { alpha = rowAlpha }.padding(horizontal = FocusRoom).padding(top = FocusRoom),
+                    Modifier.fillMaxWidth().height(rowHeight).graphicsLayer { alpha = rowAlpha }.padding(horizontal = FocusRoom).padding(top = topRoom),
                     horizontalArrangement = Arrangement.spacedBy(ColumnGap),
                 ) {
                     for (c in 0 until columns) {

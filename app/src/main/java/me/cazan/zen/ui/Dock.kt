@@ -302,7 +302,7 @@ private fun DockItem(
         }
         Txt(
             if (moving) "◀ ▶" else entry.label,
-            Modifier.padding(top = 8.dp),
+            Modifier.padding(top = 8.dp).crawlWhen(focused && !moving),
             size = 14.sp,
             color = if (lit) Zen.Text else Zen.TextDim,
             weight = if (lit) FontWeight.Medium else FontWeight.Normal,

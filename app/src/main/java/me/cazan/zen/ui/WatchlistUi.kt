@@ -150,8 +150,9 @@ fun WatchTile(
         }
         Txt(
             label.text,
-            Modifier.fillMaxWidth().padding(top = 12.dp, start = 2.dp),
+            Modifier.fillMaxWidth().padding(top = 8.dp, start = 2.dp).crawlWhen(focused),
             size = 14.sp,
+            maxLines = 1,
             color = when {
                 label.watchable -> Good
                 focused -> Zen.Text

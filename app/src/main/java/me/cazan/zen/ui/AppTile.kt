@@ -252,7 +252,8 @@ fun AppTile(
             Modifier
                 .fillMaxWidth()
                 .padding(top = 14.dp)
-                .alpha(if (showLabel || highlighted) 1f else 0f),
+                .alpha(if (showLabel || highlighted) 1f else 0f)
+                .crawlWhen(highlighted),
             size = 15.sp,
             color = if (highlighted) Zen.Text else Zen.TextDim,
             weight = if (highlighted) FontWeight.Medium else FontWeight.Normal,

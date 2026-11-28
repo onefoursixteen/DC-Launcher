@@ -1,5 +1,18 @@
 # Changelog
 
+## v1.6.1 — 2026-11-28
+
+### Changed
+- **Bigger watchlist tiles:** Watchlist and Requests tiles are about 25% larger and still show
+  two rows under the spotlight, so titles are easier to read on the TV.
+- **Scrolling captions:** the text under the selected tile (watchlist status, app names in the
+  grid and the dock) now scrolls sideways when it's too long to fit.
+- **Glass buttons:** the round buttons in the top-right corner match the glass dock: clear,
+  top-lit glass with a soft shadow, turning frosted white when selected.
+
+### Install
+Updates any earlier version in place and keeps your settings: install `dc-launcher-v1.6.1.apk` over it.
+
 ## v1.6.0 — 2026-11-28
 
 ### Changed
